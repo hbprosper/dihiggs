@@ -13,6 +13,45 @@ import scipy.stats as st
 CHECK = "\u2705"
 FAIL  = "\u274C"
 WARN  = "\u26A0"
+CHECK = "\u2705"
+FAIL  = "\u274C"
+WARN  = "\u26A0"
+# ----------------------------------------------------------------------------
+def download(datafile, 
+             website='http://www.hep.fsu.edu/~harry/datasets',
+             timeout=10):
+    import requests
+    
+    if os.path.exists(datafile):
+        return True
+        
+    dirname, filename = os.path.split(datafile)
+    dirname = os.path.abspath(dirname)
+    cwd     = os.path.abspath(os.getcwd())
+    os.chdir(dirname)
+
+    url = f'{website}/{filename}'
+
+    success = False
+    try:
+        response = requests.get(url, timeout=timeout)  # seconds
+        response.raise_for_status()  # raises HTTPError if status >= 400
+        with open(filename, "wb") as f:
+            f.write(response.content)
+        print("✅ Download succeeded.")
+        success = True
+    except requests.exceptions.HTTPError as e:
+        print("❌ HTTP error:", e)
+    except requests.exceptions.ConnectionError:
+        print("❌ Failed to connect (check URL or network).")
+    except requests.exceptions.Timeout:
+        print("❌ Request timed out.")
+    except Exception as e:
+        print("❌ Other error:", e)
+
+    os.chdir(cwd)
+    
+    return success
 # -----------------------------------------------------------------------
 # Copied from AIMS PINN project
 # -----------------------------------------------------------------------
