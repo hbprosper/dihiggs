@@ -293,6 +293,8 @@ class Monitor:
         return save
 
     def reset(self):
+        print()
+        
         # get last iteration number from loss file
         df = pd.read_csv(self.lossfile)
 
@@ -321,4 +323,5 @@ class Monitor:
                                   stdout=subprocess.PIPE,
                                   stderr=subprocess.DEVNULL)
     def end(self):
+        print()
         mp.use(self.original_backend, force=True)
