@@ -6,7 +6,7 @@
 # Aug  2025 HBP use mlinphysics
 #------------------------------------------------------------------------------
 import os, sys
-import mlinphysics.utils.monitor as mon
+import dihiggs.utils.monitor as mon
 #------------------------------------------------------------------------------
 def main():
     # get name of loss file

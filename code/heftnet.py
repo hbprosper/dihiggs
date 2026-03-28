@@ -1,16 +1,18 @@
+# ----------------------------------------------------------
 import torch
 import torch.nn as nn
 import numpy as np
+import dihiggs.nn as mlp
+# ----------------------------------------------------------
+NAME     = 'heftnet'
+FEATURES = ['mhh', 'klambda', 'CT', 'CTT', 'CGGH', 'CGGHH']
+TARGET   = 'sigma'
 
-name     = 'heftnet'
-features = ['mhh', 'klambda', 'CT', 'CTT', 'CGGH', 'CGGHH']
-target   = 'sigma'
-nodes    = 25
-nhidden  = 10
-noutputs = 23
-
+WIDTH    = 25
+HIDDEN   =  5
+ACTIVATION = 'nn.SiLU'
+# ----------------------------------------------------------
 class Sin(nn.Module):
-
     def __init__(self):
         # initial base class (nn.Module)
         super().__init__()
@@ -18,32 +20,63 @@ class Sin(nn.Module):
     def forward(self, x):
         return torch.sin(x)
         
-class HEFTNet(nn.Module):
+class HEFTNet(mlp.Model):
 
-    def __init__(self):
+    def __init__(self, width=WIDTH, hidden=HIDDEN, activation=ACTIVATION):
 
         # initial base class (nn.Module)
         super().__init__()
 
         # model the 23 functions a_i(m_hh) with a simple deep neural network 
-        cmd = 'self.P = nn.Sequential(nn.Linear(1, nodes), nn.SiLU(),'
-        for _ in range(nhidden):
-            cmd += 'nn.Linear(nodes, nodes), nn.SiLU(),'
-        cmd += 'nn.Linear(nodes, noutputs))'
+        cmd = f'self.P = nn.Sequential(nn.Linear(1, width), {activation}(),'
+        for _ in range(hidden):
+            cmd += f'nn.Linear(width, width), {activation}(),'
+        cmd += 'nn.Linear(width, 23), nn.Tanh())'
         exec(cmd)
 
-        self.Q = nn.Linear(1, noutputs, bias=False)
+        self.Q = nn.Linear(1, 23)
+
+        # fix the biases
+        #self.Q.bias.requires_grad=False
         
-    # required method: this function computes the sqrt(cross section)
+        # self.Q.bias[0] = np.log(1e-3) # a1
+        # self.Q.bias[1] = np.log(1e-2) # a2
+        # self.Q.bias[2] = np.log(1e-3)
+        # self.Q.bias[3] = np.log(1e-3)
+        
+        # self.Q.bias[4] = np.log(1e-2)
+        # self.Q.bias[5] = np.log(1e-2) 
+        # self.Q.bias[6] = np.log(1e-3)
+        # self.Q.bias[7] = np.log(1e-3)
+        
+        # self.Q.bias[8] = np.log(1e-3)
+        # self.Q.bias[9] = np.log(1e-2)
+        # self.Q.bias[10] = np.log(1e-3)
+        # self.Q.bias[11] = np.log(1e-2)
+        
+        # self.Q.bias[12] = np.log(1e-3)
+        # self.Q.bias[13] = np.log(1e-3)
+        # self.Q.bias[14] = np.log(1e-3)
+        # self.Q.bias[15] = np.log(1e-5)
+        
+        # self.Q.bias[16] = np.log(1e-4)
+        # self.Q.bias[17] = np.log(1e-5)
+        # self.Q.bias[18] = np.log(1e-4)
+        # self.Q.bias[19] = np.log(1e-5)
+        
+        # self.Q.bias[20] = np.log(1e-4)
+        # self.Q.bias[21] = np.log(1e-5)
+        # self.Q.bias[22] = np.log(1e-4)
+        
     def forward(self, x):
-        # x.shape: (N, 6), where N is the batch size
+        # x.shape: [N, 6], where N is the batch size
 
         # compute vector of Wilson coefficient functions
         mhh, klambda, ct, ctt, cggh, cgghh = x.transpose(1, 0)
 
         C = torch.column_stack((
-            ct**4,                 # A1
-            ctt**2,
+             ct**4,                 # A1
+             ctt**2,
              ct**2*klambda**2,
              cggh**2*klambda**2,
              cgghh**2,
@@ -70,10 +103,13 @@ class HEFTNet(nn.Module):
         A = self.coeffs(mhh)
         
         # compute cross section(s) per 15 GeV bin
-        xsec = (C * A).sum(dim=1) 
+        cross_section = (C * A).sum(dim=1)
 
-        return xsec
+        return cross_section
         
     def coeffs(self, x):
         # must reshape input from (N, ) to (N, 1)
-        return self.P(x.view(-1, 1)) * torch.exp(self.Q(x.view(-1, 1)))
+        x = x.view(-1, 1)
+        P = self.P(x)
+        Q = self.Q(x)
+        return P * torch.exp(Q)
