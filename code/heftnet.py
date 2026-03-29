@@ -10,7 +10,7 @@ TARGET   = 'sigma'
 
 WIDTH    = 25
 HIDDEN   =  5
-ACTIVATION = 'nn.SiLU'
+ACTIVATION = 'nn.ReLU'
 # ----------------------------------------------------------
 class Sin(nn.Module):
     def __init__(self):
@@ -35,38 +35,6 @@ class HEFTNet(mlp.Model):
         exec(cmd)
 
         self.Q = nn.Linear(1, 23)
-
-        # fix the biases
-        #self.Q.bias.requires_grad=False
-        
-        # self.Q.bias[0] = np.log(1e-3) # a1
-        # self.Q.bias[1] = np.log(1e-2) # a2
-        # self.Q.bias[2] = np.log(1e-3)
-        # self.Q.bias[3] = np.log(1e-3)
-        
-        # self.Q.bias[4] = np.log(1e-2)
-        # self.Q.bias[5] = np.log(1e-2) 
-        # self.Q.bias[6] = np.log(1e-3)
-        # self.Q.bias[7] = np.log(1e-3)
-        
-        # self.Q.bias[8] = np.log(1e-3)
-        # self.Q.bias[9] = np.log(1e-2)
-        # self.Q.bias[10] = np.log(1e-3)
-        # self.Q.bias[11] = np.log(1e-2)
-        
-        # self.Q.bias[12] = np.log(1e-3)
-        # self.Q.bias[13] = np.log(1e-3)
-        # self.Q.bias[14] = np.log(1e-3)
-        # self.Q.bias[15] = np.log(1e-5)
-        
-        # self.Q.bias[16] = np.log(1e-4)
-        # self.Q.bias[17] = np.log(1e-5)
-        # self.Q.bias[18] = np.log(1e-4)
-        # self.Q.bias[19] = np.log(1e-5)
-        
-        # self.Q.bias[20] = np.log(1e-4)
-        # self.Q.bias[21] = np.log(1e-5)
-        # self.Q.bias[22] = np.log(1e-4)
         
     def forward(self, x):
         # x.shape: [N, 6], where N is the batch size
@@ -75,7 +43,7 @@ class HEFTNet(mlp.Model):
         mhh, klambda, ct, ctt, cggh, cgghh = x.transpose(1, 0)
 
         C = torch.column_stack((
-             ct**4,                 # A1
+             ct**4, 
              ctt**2,
              ct**2*klambda**2,
              cggh**2*klambda**2,
