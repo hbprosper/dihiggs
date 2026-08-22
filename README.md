@@ -1,5 +1,5 @@
 # dihiggs
-Effective field theory fits to di-Higgs process at the Large Hadron Collider.
+Modeling the di-Higgs cross section as a function of the parameters of the Higgs effective field theory (HEFT).
 
 
 ## Dependencies
