@@ -3,7 +3,7 @@
 # Harrison B. Prosper
 # July 2021
 #------------------------------------------------------------------------
-import os, sys, re
+import os, sys, re, signal
 import numpy as np
 try:
     import pandas as pd
@@ -320,8 +320,17 @@ class Monitor:
         print(' '.join(cmd))
         
         self.p = subprocess.Popen(cmd,
-                                  stdout=subprocess.PIPE,
+                                  stdout=subprocess.DEVNULL,
                                   stderr=subprocess.DEVNULL)
-    def end(self):
-        print()
-        mp.use(self.original_backend, force=True)
+    def terminate(self):
+        try:
+            print('\n\tTerminating loss monitor...')        
+            self.p.terminate()
+            try:
+                self.p.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                self.p.kill()
+                self.p.wait()
+            print('\tDone!')
+        except:
+            print('\tNone started in this session!')
