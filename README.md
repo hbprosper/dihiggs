@@ -3,8 +3,8 @@ Effective field theory fits to di-Higgs process at the Large Hadron Collider.
 
 
 ## Dependencies
-The notebooks, and `dihiggs` module, in this repository depend on one or more of several well-known
-well-engineered and free Python modules.
+The notebooks, and `dihiggs` module, in this repository depend on one or more well-known
+well-engineered and Python modules.
 
 | __modules__   | __description__     |
 | :---          | :---        |
