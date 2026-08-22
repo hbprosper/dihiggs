@@ -2,7 +2,7 @@
 import torch
 import torch.nn as nn
 import numpy as np
-import dihiggs.nn as mlp
+import sys; sys.path.insert(0, '.'); import dihiggs.nn as mlp
 # ----------------------------------------------------------
 NAME     = 'heftnet'
 FEATURES = ['mhh', 'klambda', 'CT', 'CTT', 'CGGH', 'CGGHH']
@@ -40,7 +40,15 @@ class HEFTNet(mlp.Model):
         # x.shape: [N, 6], where N is the batch size
 
         # compute vector of Wilson coefficient functions
-        mhh, klambda, ct, ctt, cggh, cgghh = x.transpose(1, 0)
+        # NOTE: TorchScript cannot unpack a Tensor directly into a tuple of
+        # variables ("Tensor cannot be used as a tuple"), so index explicitly.
+        xt = x.transpose(1, 0)
+        mhh    = xt[0]
+        klambda= xt[1]
+        ct     = xt[2]
+        ctt    = xt[3]
+        cggh   = xt[4]
+        cgghh  = xt[5]
 
         C = torch.column_stack((
              ct**4, 

@@ -11,6 +11,8 @@ import torch.utils.data as td
 
 import time
 from datetime import datetime
+from pathlib import Path
+
 from torch.optim.lr_scheduler import MultiStepLR
 try:
     import scipy.stats as st
@@ -157,52 +159,60 @@ class FCNN(Model):
         
         self.net = eval(cmd)
 
+# ---------------------------------------------------------------------------
+def configname(name, dirname):
+    return f'runs/{dirname}/{name}_config.yaml'
+    
 class Config:
     '''
-        Manage simple ML application configuration
-
-          name:      name stub for all files, including the yaml file
-          batchsize: 
-          base_lr:   base learning rate
-            :
-          etc.
+        Manage simple ML application configuration.
     '''
-    def __init__(self, name, mkdir=True, dirname=None, verbose=0):
+    def __init__(self, name, dirname=None, verbose=0):
         '''
-        name  : string   Stub for all files, including the yaml file, or 
-                         the name of a yaml file. A json file is identified 
-                         by the extension .yaml
+        name : string    Stub for all files or the filename of a yaml 
+                         file. A json file must have extension .yaml
                 
-                            1. if name is a name stub, create a new yaml object.
-                            2. if name is a yaml filename, create the yaml object
-                               from the file.
-                               
-        mkdir : bool     If True create log folder [True]. The default name is
-                         runs/<timestamp>.
+                            1. If name is a name stub, create a new yaml object.
+                            2. If name is a yaml filename, create the yaml object
+                               from the specified file.
                          
-        dirname : string If given use this as the name of the folder: 
-                         runs/<dirname>.
+        dirname : string If given, use this as the name of the folder: 
+                         runs/<dirname>. The default name is runs/<timestamp>.
         '''
-        self.makedir = mkdir
         self.dirname = dirname
-        if self.dirname is None:
-            self.time = time.ctime()
-            self.dirname = datetime.now().strftime("%Y-%m-%d_%H%M")
+               
+        # Check IO direction 
+        if name.endswith('.yaml'):
+            # ----------------------------------------------------------
+            # Read mode
+            # ----------------------------------------------------------
+            self.filename = name
             
-        logdir = f"runs/{self.dirname}"
-        self.logdir = logdir
-        
-        # create run folder if self.makedir is True
-        self.mkdir()
-                
-        # check if a yaml file has been specified
-        if name.endswith('.yaml') or name.endswith('.yml'):
-            self.cfg_filename = name # cache filename
-            self.load(name)
+            if not os.path.exists(self.filename):
+                raise FileNotFoundError(f'''
+    Configuration file {self.filename} NOT found!
+            ''')
+ 
+            self.load(self.filename)  
+
+            p = Path(self.filename)
+            self.logdir  = self.filename.replace(f'/{p.name}', '')
+            self.dirname = self.logdir.replace('runs/', '')
         else:
-            # this not a yaml file specification, assume it is a name stub
-            # and build a Python dictionary that specifies the structure of
-            # 
+            # ----------------------------------------------------------
+            # Write mode
+            # ----------------------------------------------------------
+            if self.dirname is None:
+                self.time = time.ctime()
+                self.dirname = datetime.now().strftime("%Y-%m-%d_%H%M")
+
+            logdir = f"runs/{self.dirname}"
+            self.logdir = logdir
+        
+            # Create run folder if self.makedir is True
+            os.makedirs("runs", exist_ok=True)
+            os.makedirs(self.logdir, exist_ok=True) 
+
             self.cfg = {}
             cfg = self.cfg
             
@@ -211,7 +221,9 @@ class Config:
             # construct output file names    
             o_cfg = {}
 
+            o_cfg['config']     = f'{logdir}/{name}_config.yaml'
             o_cfg['losses']     = f'{logdir}/{name}_losses.csv'
+            o_cfg['script']     = f'{logdir}/{name}_script.pth'
             o_cfg['params']     = f'{logdir}/{name}_params.pth'
             o_cfg['init_params']= f'{logdir}/{name}_init_params.pth'
             o_cfg['plots']      = f'{logdir}/{name}_plots.png'
@@ -221,15 +233,10 @@ class Config:
             # create a default name for yaml configuration file
             # this name will be used if a filename is not
             # specified in the save method
-            self.cfg_filename = f'{logdir}/{name}_config.yaml'
+            self.filename = f'{logdir}/{name}_config.yaml'
     
         if verbose:
             print(self.__str__())
-
-    def mkdir(self):
-        if self.makedir:
-            os.makedirs("runs", exist_ok=True)
-            os.makedirs(self.logdir, exist_ok=True) 
         
     def load(self, filename):
         # make sure file exists
@@ -243,10 +250,10 @@ class Config:
     def save(self, filename=None):
         # if no filename specified use default filename
         if filename == None:
-            filename = self.cfg_filename
+            filename = self.filename
 
         # require .yaml extension
-        if not (filename.endswith('.yaml') or filename.endswith('.yml')):
+        if not filename.endswith('.yaml'):
             raise NameError('the output file must have extension .yaml')
             
         # save to yaml file
@@ -324,6 +331,74 @@ class Config:
             default_flow_style=False,  # use block style 
             indent=1,                  # indentation level
             allow_unicode=True))
+# ---------------------------------------------------------------------------
+class LRStepScheduler:
+    def __init__(self, 
+                 optimizer, n_steps, n_iters_per_step, base_lr, gamma, 
+                 verbose=True):
+        
+        self.optimizer = optimizer
+        self.scheduler = self.__get_steplr_scheduler(
+            optimizer, n_steps, n_iters_per_step, base_lr, gamma
+        )
+        self.verbose   = verbose
+        self.curr_lr   = -1.0
+
+    def __get_steplr_scheduler(self,
+        optimizer, n_steps, n_iters_per_step, base_lr, gamma):
+        
+        # Number of milestones in multistep LR schedule
+        n_milestones = n_steps - 1
+        print(f'number of milestones: {n_milestones:10d}\n')
+    
+        # Learning rate milestones
+        milestones = [n * n_iters_per_step for n in range(n_steps)]
+    
+        # learning rates
+        lrs = [base_lr * gamma**i for i in range(n_steps)]
+        
+        print("Step | Milestone | LR")
+        print("-----------------------------")
+        for i in range(n_steps):
+            print(f"{i:>4} | {milestones[i]:>9} | {lrs[i]:<10.1e}")
+            if i < 1:
+                print("-----------------------------")
+        print()
+        
+        # drop first entry of milestones list because it contains the base LR    
+        return MultiStepLR(optimizer, milestones=milestones[1:], gamma=gamma)
+
+    def step(self):
+        self.scheduler.step()
+        
+    def lr(self):
+        lrate = self.optimizer.param_groups[0]['lr']
+        if lrate != self.curr_lr:
+            self.curr_lr = lrate
+            if self.verbose:
+                print()
+                print(f'\t\tlearning rate: {lrate:10.3e}')
+        return lrate
+# ---------------------------------------------------------------------------
+class Objective(nn.Module):
+
+    def __init__(self, model, avgloss):
+        super().__init__()
+        self.model = model
+        self.avgloss = avgloss
+        
+    def eval(self):
+        self.model.eval()
+
+    def train(self):
+        self.model.train()
+
+    def save(self, paramsfile):
+        self.model.save(paramsfile)
+    
+    def forward(self, x, y):
+        f = self.model(x)
+        return self.avgloss(f, y) 
 # ------------------------------------------------------------------------
 class LRStepScheduler:
     def __init__(self, 
