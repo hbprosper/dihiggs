@@ -2,8 +2,7 @@
 import torch
 import torch.nn as nn
 import numpy as np
-import sys; sys.path.insert(0, '.') 
-import dihiggs.nn as mlp
+from drwho import nn as mlp
 # ----------------------------------------------------------
 NAME     = 'heftnet'
 FEATURES = ['mhh', 'klambda', 'CT', 'CTT', 'CGGH', 'CGGHH']

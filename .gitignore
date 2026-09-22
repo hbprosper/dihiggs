@@ -172,3 +172,9 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+# Local scratch: files pulled out of the repo, pending manual deletion
+clutter/
+
+# macOS
+.DS_Store

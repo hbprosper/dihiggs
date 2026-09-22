@@ -1,26 +1,29 @@
-[project]
-name = "dihiggs"
-version = "0.1.0"
-description = "Modeling the di-Higgs differential cross section."
-readme = "README.md"
-authors = [
-  { name="Harrison B. Prosper", email="hprosper@fsu.edu" }
-]
-license = { text = "MIT" }
-dependencies = [
-  # e.g. "numpy>=1.20", "requests"
-]
-requires-python = ">=3.10"
-
 [build-system]
-requires = ["setuptools>=61.0", "wheel"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
-[tool.setuptools.packages.find]
-where = ["."]
-
-[project.scripts]
-monlosses = "dihiggs.bin.monitor_losses:main"
+[project]
+name = "dihiggs"
+dynamic = ["version"]
+description = "Modeling the di-Higgs differential cross section."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Harrison B. Prosper", email = "hprosper@fsu.edu" }]
+dependencies = [
+    "drwho @ git+https://github.com/hbprosper/drwho.git@main",
+    "numpy",
+    "pandas",
+    "matplotlib",
+    "torch",
+]
 
 [project.urls]
-"Homepage" = "https://github.com/hbprosper/dihiggs"
+Homepage = "https://github.com/hbprosper/dihiggs"
+
+[tool.setuptools]
+packages = ["dihiggs"]
+
+[tool.setuptools.dynamic]
+version = {attr = "dihiggs.__version__"}
