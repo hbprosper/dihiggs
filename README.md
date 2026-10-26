@@ -21,6 +21,21 @@ well-engineered and Python modules.
 | joblib | module to save and load Python objects |
 | importlib | importing and re-importing modules |
 
+## Running on Google Colab
+Each notebook in `code/` can be run on Google Colab without installing anything:
+
+| __notebook__ | |
+| :--- | :--- |
+| `heft_prepare_data.ipynb` | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/hbprosper/dihiggs/blob/main/code/heft_prepare_data.ipynb) |
+| `heft_train.ipynb` | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/hbprosper/dihiggs/blob/main/code/heft_train.ipynb) |
+| `heft_test.ipynb` | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/hbprosper/dihiggs/blob/main/code/heft_test.ipynb) |
+
+The first code cell of each notebook clones this repository, installs the `dihiggs` package (which also installs `drwho`), and makes `dihiggs/code` the working directory; outside Colab it does nothing. A few points to note:
+
+1. Each Colab notebook runs on its own temporary machine. So that `heft_test.ipynb` can find the model trained by `heft_train.ipynb`, both notebooks set `USE_DRIVE = True`, which keeps the `runs/` folder in your Google Drive (`MyDrive/dihiggs/runs`). You will be asked to allow access to your Drive.
+2. Training is much faster on a GPU: choose __Runtime > Change runtime type > GPU__.
+3. On Colab, the files written by `heft_prepare_data.ipynb` last only as long as the runtime; `heft_train.ipynb` uses the data files in the repository.
+
 ##  Installation
 The simplest way to install these Python modules is first to install a software environment system. 
 You could just bite the bullet and install Anaconda! However, it may be better to install
