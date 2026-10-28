@@ -17,6 +17,7 @@ dependencies = [
     "pandas",
     "matplotlib",
     "torch",
+    "pyyaml",
 ]
 
 [project.urls]
@@ -24,6 +25,9 @@ Homepage = "https://github.com/hbprosper/dihiggs"
 
 [tool.setuptools]
 packages = ["dihiggs"]
+
+[tool.setuptools.package-data]
+dihiggs = ["templates/*"]
 
 [tool.setuptools.dynamic]
 version = {attr = "dihiggs.__version__"}

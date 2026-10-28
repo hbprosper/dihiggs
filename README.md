@@ -29,12 +29,25 @@ Each notebook in `code/` can be run on Google Colab without installing anything:
 | `heft_prepare_data.ipynb` | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/hbprosper/dihiggs/blob/main/code/heft_prepare_data.ipynb) |
 | `heft_train.ipynb` | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/hbprosper/dihiggs/blob/main/code/heft_train.ipynb) |
 | `heft_test.ipynb` | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/hbprosper/dihiggs/blob/main/code/heft_test.ipynb) |
+| `heft_export.ipynb` | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/hbprosper/dihiggs/blob/main/code/heft_export.ipynb) |
 
 The first code cell of each notebook clones this repository, installs the `dihiggs` package (which also installs `drwho`), and makes `dihiggs/code` the working directory; outside Colab it does nothing. A few points to note:
 
 1. Each Colab notebook runs on its own temporary machine. So that `heft_test.ipynb` can find the model trained by `heft_train.ipynb`, both notebooks set `USE_DRIVE = True`, which keeps the `runs/` folder in your Google Drive (`MyDrive/dihiggs/runs`). You will be asked to allow access to your Drive.
 2. Training is much faster on a GPU: choose __Runtime > Change runtime type > GPU__.
 3. On Colab, the files written by `heft_prepare_data.ipynb` last only as long as the runtime; `heft_train.ipynb` uses the data files in the repository.
+
+## Using the model without PyTorch
+`heft_export.ipynb` (or `python -m dihiggs.convert runs/L1Loss/dihiggs_config.yaml --out exported`, run in `code/`) writes two self-contained copies of the trained model for colleagues who do not use PyTorch:
+
+| __folder__ | __the model__ | __needs__ |
+| :--- | :--- | :--- |
+| `exported/python/` | `heftnet_numpy.py` | numpy and the Python standard library |
+| `exported/cpp/` | `heftnet.hpp` (header only; also works in ROOT) | the C++17 standard library |
+
+Both read the trained parameters from a plain-text file, `heftnet_weights.txt`, take the di-Higgs mass in GeV, and return the cross section in pb per 15 GeV bin. Each folder has a README, an example program, and `reference.txt`, values from the PyTorch model that the example program uses to check the copy. The converter validates both copies against the PyTorch model before finishing.
+
+The model itself is described in [`docs/dihiggs_model.pdf`](docs/dihiggs_model.pdf).
 
 ##  Installation
 The simplest way to install these Python modules is first to install a software environment system. 
