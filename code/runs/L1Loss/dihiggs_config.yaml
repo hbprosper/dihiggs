@@ -1,0 +1,28 @@
+name: dihiggs
+file:
+  losses: runs/L1Loss/dihiggs_losses.csv
+  params: runs/L1Loss/dihiggs_params.pth
+  init_params: runs/L1Loss/dihiggs_init_params.pth
+  plots: runs/L1Loss/dihiggs_plots.png
+  config: runs/L1Loss/dihiggs_config.yaml
+model_name: heftnet
+features:
+- mhh
+- klambda
+- CT
+- CTT
+- CGGH
+- CGGHH
+target: sigma
+activation: nn.ReLU
+batch_size: 2048
+train_size: 270406
+test_size: 41356
+val_size: 6363
+monitor_step: 100
+frac: 0.015
+n_steps: 4
+n_iterations: 200000
+n_iters_per_step: 50000
+base_lr: 0.002
+gamma: 0.5
