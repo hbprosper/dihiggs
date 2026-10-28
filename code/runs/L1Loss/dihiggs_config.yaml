@@ -16,9 +16,9 @@ features:
 target: sigma
 activation: nn.ReLU
 batch_size: 2048
-train_size: 270406
-test_size: 41356
-val_size: 6363
+train_size: 270397
+test_size: 41354
+val_size: 6364
 monitor_step: 100
 frac: 0.015
 n_steps: 4
