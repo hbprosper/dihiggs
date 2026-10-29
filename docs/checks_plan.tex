@@ -1,0 +1,308 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{mathpazo}
+\usepackage{amsmath,amssymb}
+\usepackage{microtype}
+\usepackage{booktabs}
+\usepackage[dvipsnames]{xcolor}
+\usepackage[most]{tcolorbox}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\hypersetup{colorlinks=true,linkcolor=MidnightBlue,urlcolor=MidnightBlue}
+\usepackage{cleveref}
+\urlstyle{tt}
+\def\UrlBreaks{\do\_\do/\do.}
+\newcommand{\file}[1]{\nolinkurl{#1}}
+\newcommand{\code}[1]{\texttt{#1}}
+\newcommand{\mhh}{m_{hh}}
+
+\definecolor{trainable}{HTML}{1B6CA8}
+\definecolor{physics}{HTML}{2E933C}
+\definecolor{warn}{HTML}{C0392B}
+
+\newtcolorbox{keyidea}[1][]{enhanced,breakable,colback=physics!6,colframe=physics!70!black,
+  fonttitle=\bfseries,title={#1},boxrule=0.6pt,arc=2pt,left=6pt,right=6pt}
+\newtcolorbox{aside}[1][]{enhanced,breakable,colback=trainable!5,colframe=trainable!70!black,
+  fonttitle=\bfseries,title={#1},boxrule=0.6pt,arc=2pt,left=6pt,right=6pt}
+\newtcolorbox{watch}[1][]{enhanced,breakable,colback=warn!5,colframe=warn!70!black,
+  fonttitle=\bfseries,title={#1},boxrule=0.6pt,arc=2pt,left=6pt,right=6pt}
+
+\setlist{itemsep=2pt,topsep=3pt}
+
+\title{\textbf{Three checks of the \texttt{dihiggs} data and test pipeline}\\[4pt]
+\large Plan, for approval before the checks are run}
+\date{October 28, 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+\noindent
+This note sets out how I propose to check that (1) every HEFT parameter point
+in the POWHEG file is unique, (2) the 1\,000 holdout spectra written by
+\code{heft\_prepare\_data.ipynb} are disjoint from the data used by
+\code{heft\_train.ipynb}, and (3) \code{heft\_test.ipynb} correctly compares the
+POWHEG histograms with the predictions of the trained model. For each check I
+state the question, why it matters, the method, and what counts as a pass. I also
+list things I noticed while reading the code; these are \emph{observations to be
+tested}, not results. No checks have been run yet.
+\end{abstract}
+
+% ===========================================================================
+\section{Ground rules}
+
+\begin{itemize}
+  \item \textbf{What is checked.} The repository as of commit \code{2cc3bc5}
+  (``more testing''): the three notebooks, the three files in \file{data/}, and
+  the trained model in \file{code/runs/L1Loss/}.
+  \item \textbf{Read-only.} No file in the repository is modified. In
+  particular, \code{heft\_prepare\_data.ipynb} is \emph{not} rerun, because it
+  reshuffles the spectra without a fixed random seed. Rerunning it would
+  produce new, different data files and destroy the very thing being checked.
+  \item \textbf{Where.} Checks 1 and 2 need only pandas and numpy and can run on
+  your computer. Check 3 needs PyTorch, so it runs in my workspace on copies of the
+  files.
+  \item \textbf{Deliverables.} The checks become a notebook,
+  \file{code/heft_checks.ipynb}, which prints PASS or FAIL for each test, so
+  they can be rerun after every change and later become a step in the workflow.
+  The results go in a short PDF report.
+\end{itemize}
+
+\begin{aside}[A note on comparing numbers]
+\code{heft\_prepare\_data.ipynb} converts the Wilson coefficients and cross
+sections to 32-bit floats (\code{float32}) before writing them. The test file stores
+these as short decimals, while the training file stores the same values after
+conversion to 64-bit floats, written with more digits. The same number can
+therefore \emph{look} different in the two files. Wherever values from different
+files are compared, I convert both to \code{float32} first. Equal \code{float32}
+values then compare exactly, with no tolerance needed.
+\end{aside}
+
+% ===========================================================================
+\section{Check 1: every parameter point in the POWHEG file is unique}
+
+\paragraph{Question.} Does each row of
+\file{data/powheg_total_gauss_params_13TeV.csv.gz} correspond to a different point
+$\theta = (\kappa_\lambda, c_t, c_{tt}, c_{ggh}, c_{gghh})$?
+
+\paragraph{Why it matters.} A duplicated point could end up in both the training
+and the holdout sets. The holdout would then partly test memory rather than
+generalisation, even with perfect bookkeeping. A duplicated row is also a sign that
+the file was assembled incorrectly.
+
+\paragraph{Method.}
+\begin{enumerate}[label=\textbf{1\alph*.}]
+  \item \textbf{Exact duplicates.} Read the file (4\,999 rows expected) and count
+  rows whose five coefficients are identical. Do this both as stored and after
+  conversion to \code{float32}, which is the precision the pipeline actually uses.
+  Two distinct points could in principle become equal on conversion.
+  \item \textbf{Near duplicates.} Exact equality can miss points that differ only
+  by rounding. Divide each coefficient by its standard deviation, so that the five
+  axes are comparable, and compute the distance between every pair of points:
+  $4\,999 \times 4\,998/2 \approx 12.5$ million pairs, a few seconds with numpy. I will report
+  the smallest distances and list any pair closer than $10^{-6}$, roughly the
+  precision of the stored numbers.
+  \item \textbf{Duplicate spectra.} Check whether any two rows have identical
+  cross sections in all 100 bins. If two different $\theta$ shared a spectrum, that
+  would point to a copying error in producing the file.
+  \item \textbf{Sanity check of the closest pairs.} For the few closest pairs of
+  points, compare their spectra. Nearby points should have similar spectra. A large
+  difference would mean that either the parameters or the spectra are attached to
+  the wrong row.
+\end{enumerate}
+
+\paragraph{Pass.} No exact duplicates, either as stored or in \code{float32}; no
+pair closer than $10^{-6}$; no duplicate spectra. The distribution of
+nearest-neighbour distances is reported for information.
+
+% ===========================================================================
+\section{Check 2: the 1\,000 holdout spectra are disjoint from the training data}
+
+\subsection{How the notebook builds the two sets}
+
+Reading \code{heft\_prepare\_data.ipynb}:
+\begin{enumerate}
+  \item Each POWHEG row gets an \code{ID} equal to its original row number,
+  0--4\,998. The rows are then shuffled (\code{df.sample(frac=1)}).
+  \item The first 1\,000 shuffled rows are written to
+  \file{heft_wide_gauss_testdata_13TeV.csv} (the holdout), keeping their \code{ID}.
+  \item The remaining 3\,999 rows are diced into one row per bin, with their
+  \code{ID}. Zero cross sections are dropped, the rows are shuffled, and they are
+  written to \file{heft_wide_gauss_traindata_13TeV.csv.gz}.
+  \item \code{heft\_train.ipynb} reads only the training file and splits it into
+  training (85\%), validation (2\%) and test (13\%) parts.
+\end{enumerate}
+By construction, the two sets are disjoint \emph{if both files were written by the
+same run} of the notebook.
+
+\begin{watch}[What could go wrong]
+\begin{itemize}
+  \item \textbf{Files from different runs.} The shuffle has no fixed seed, so every
+  run makes a different split. If the training file came from one run and the
+  holdout file from another, about a quarter of the holdout spectra would be in the
+  training data. The git history has separate commits ``update traindata'' and
+  ``update testdata'', so this needs checking rather than assuming.
+  \item \textbf{A model trained on older data.} Before the change from 500 to 1\,000
+  holdout spectra, the training file contained 4\,499 spectra. A model trained on
+  that file would have seen up to 500 of today's holdout spectra. The model in
+  \file{runs/L1Loss} must have been trained on the \emph{current} training file.
+\end{itemize}
+\end{watch}
+
+\subsection{Method}
+\begin{enumerate}[label=\textbf{2\alph*.}]
+  \item \textbf{Counts.} The holdout file has 1\,000 rows with 1\,000 distinct
+  \code{ID}s. The training file's \code{ID}s form a set of 3\,999. The total number
+  of training rows equals $3\,999 \times 80$ minus the number of zero bins in those
+  spectra. The notebook comment records 318\,115.
+  \item \textbf{Disjoint by ID.} The two sets of \code{ID}s have no element in
+  common, and together they make up exactly $\{0, 1, \dots, 4\,998\}$.
+  \item \textbf{Disjoint by value.} \code{ID}s could be mislabelled, so repeat the
+  test using the parameter values themselves. No $\theta$ (in \code{float32}) in
+  the training file may appear in the holdout file. Together with Check 1, this is
+  independent of the bookkeeping.
+  \item \textbf{Each file is a faithful copy of the POWHEG file.}
+  \begin{itemize}
+    \item Every holdout row must equal POWHEG row \code{ID}: the same five
+    coefficients and the same 80 cross sections, bins 17--96.
+    \item For every training row, the coefficients must equal those of POWHEG row
+    \code{ID}. The mass value $x$ must be a bin centre, $x = (k - 17 + \tfrac12)/100$
+    for an integer $k$ between 17 and 96, and $\sigma$ must equal POWHEG row
+    \code{ID}, bin $k$.
+    \item Each \code{ID} must contribute exactly its number of non-zero bins.
+  \end{itemize}
+  This catches misaligned columns or a wrong bin-to-mass mapping, as well as mixed
+  files.
+  \item \textbf{No leak inside the training notebook.} Confirm, by reading the
+  code, that \code{heft\_train.ipynb} opens no file other than the training file.
+  Also confirm that the \code{drwho} \code{Dataset} and \code{DataLoader} classes
+  only slice the arrays they are given and never read from disk.
+  \item \textbf{The trained model used the current training file.}
+  \begin{itemize}
+    \item The sizes recorded in \file{runs/L1Loss/dihiggs_config.yaml} must
+    equal those computed in the notebook from the current file:
+    \code{int(0.85 N)}, \code{int(0.13 N)} and the remainder, with
+    $N = 318\,115$.
+    \item The parameter file must be newer than the commit that last changed the
+    training file.
+  \end{itemize}
+\end{enumerate}
+
+\paragraph{Pass.} All of 2a--2f hold. If 2f fails, the bookkeeping may be correct
+but the current model cannot be fairly tested on the current holdout, and would
+have to be retrained first.
+
+\begin{aside}[{Something worth knowing, though not a failure}]
+The 13\% ``test'' split inside \code{heft\_train.ipynb} consists of \emph{bins},
+not spectra. Its rows come from the same 3\,999 parameter points as the training
+rows, just from other bins. It therefore tests interpolation in $\mhh$, not
+generalisation to new $\theta$. Only the 1\,000 holdout spectra test the
+property needed for reweighting. I will state this in the report and not count it
+as a failure.
+\end{aside}
+
+% ===========================================================================
+\section{Check 3: the test notebook compares like with like}
+
+\paragraph{Question.} For each holdout spectrum, does \code{heft\_test.ipynb}
+overlay the right POWHEG histogram and the model's prediction for the \emph{same}
+$\theta$, at the right masses, in the same units?
+
+\subsection{Method}
+\begin{enumerate}[label=\textbf{3\alph*.}]
+  \item \textbf{Code review.} Read \code{get\_spectra} and \code{plot\_spectra}
+  line by line and confirm four things:
+  \begin{itemize}
+    \item the bin columns selected are 17--96, in order;
+    \item the mass values are the same bin centres the training file used;
+    \item the input columns are in the order the model expects:
+    \code{mhh, klambda, CT, CTT, CGGH, CGGHH};
+    \item the histogram bins line up with the centres.
+  \end{itemize}
+  \item \textbf{Independent recomputation.} Run the notebook's own
+  \code{get\_spectra} on all 1\,000 holdout spectra. Compare the result with a
+  second, independent calculation:
+  \begin{itemize}
+    \item the POWHEG spectrum is taken directly from the POWHEG file by \code{ID},
+    not from the holdout file;
+    \item the prediction comes from the exported numpy copy of the model, which
+    takes $\mhh$ in GeV and builds its inputs with different code.
+  \end{itemize}
+  The POWHEG spectra must agree exactly (in \code{float32}). The predictions must
+  agree to about $10^{-6}$ relative, the difference between the notebook's 32-bit
+  and the copy's 64-bit arithmetic.
+  \item \textbf{Pairing survives sorting.} The notebook sorts the spectra by total
+  cross section before plotting. For every sorted entry, check that its
+  coefficients, POWHEG spectrum and prediction still belong together, by looking up
+  the coefficients in the POWHEG file.
+  \item \textbf{The histogram reproduces the data.} Confirm that
+  \code{ax.hist(x, bins=80, range=(0, 0.8), weights=f)} puts each bin centre in its
+  own bin, so that the drawn histogram heights are exactly the POWHEG values.
+  \item \textbf{A spot check by eye.} Redraw one page of 20 panels independently
+  and compare it with the notebook's figure for the same page.
+\end{enumerate}
+
+\paragraph{Pass.} 3a--3e hold. Separately, for information, I will summarise how
+well the model agrees with POWHEG over the 1\,000 spectra, using the notebook's
+measure and a per-bin relative one (below).
+
+\begin{watch}[{Observations from reading the code, to be confirmed}]
+\begin{itemize}
+  \item \textbf{What ``RMS$/\sigma$'' measures.} The panels show
+  $\sqrt{\text{bias}^2 + \text{variance}}\,/\,\sigma_\text{total}$, computed over the 80
+  bins. That is the root-mean-square difference per \emph{bin} divided by the
+  \emph{total} cross section, which is the sum of 80 bins. It is therefore
+  about 80 times smaller than the error relative to a typical bin. This is not a bug,
+  but the label may mislead, and a per-bin relative measure is easier to interpret.
+  \item \textbf{The coefficient plot covers only part of the range.}
+  \code{plot\_coeffs} draws $a_i$ for $0 \le x \le 0.5$, that is
+  $255 \le \mhh \le 1005$~GeV, while the model is trained up to 1455~GeV.
+  \item \textbf{Minor fragilities.} \code{get\_spectra} uses the global
+  \code{spectra} rather than its argument \code{df}. This is harmless here,
+  because they are the same object. Sorting a list of tuples that contain numpy
+  arrays would fail if two spectra had exactly the same total, which is unlikely.
+\end{itemize}
+\end{watch}
+
+% ===========================================================================
+\section{Summary of tests}
+
+\begin{center}
+\small
+\begin{tabular}{lll}
+\toprule
+test & what is compared & pass if\\
+\midrule
+1a & the five coefficients, row against row & no exact duplicates\\
+1b & standardised distances between all pairs & none below $10^{-6}$\\
+1c & 100-bin spectra, row against row & no identical spectra\\
+1d & spectra of the closest pairs & similar (by eye)\\
+\midrule
+2a & row and \code{ID} counts & 1\,000 holdout; 3\,999 training IDs\\
+2b & holdout \code{ID}s against training \code{ID}s & disjoint; union is $0$--$4\,998$\\
+2c & holdout $\theta$ against training $\theta$ (\code{float32}) & disjoint\\
+2d & both files against the POWHEG file & identical values\\
+2e & files read by \code{heft\_train.ipynb} & training file only\\
+2f & model configuration and dates against the training file & sizes match; model newer\\
+\midrule
+3a & notebook code & correct bins, masses, input order\\
+3b & notebook against an independent calculation & exact (POWHEG), $\sim10^{-6}$ (model)\\
+3c & entries after sorting & all still paired correctly\\
+3d & drawn histogram against POWHEG values & identical\\
+3e & one page redrawn independently & same picture\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{keyidea}[Decisions for you]
+\begin{enumerate}
+  \item Is a near-duplicate threshold of $10^{-6}$ (in standardised units) what
+  you want, or do you have a physically motivated scale in mind?
+  \item May I commit \file{code/heft_checks.ipynb} to the repository, so the
+  checks become part of the workflow?
+  \item If 2f shows the model predates the current training file, should I stop
+  and report, or retrain and then run Check 3?
+\end{enumerate}
+\end{keyidea}
+
+\end{document}
