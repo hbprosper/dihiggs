@@ -785,7 +785,13 @@ class HMC:
                 return 0.0
             w1, p1, U1, _, _ = end
             dH = U1 + self._kinetic(p1) - H0
-            return 0.0 if not math.isfinite(dH) else min(1.0, math.exp(-dH))
+            if not math.isfinite(dH):
+                return 0.0
+            # min(1, exp(-dH)); written this way because exp(-dH) overflows
+            # (an OverflowError) when dH is very negative, i.e. when a single
+            # step lowers the energy a lot, as happens far from the posterior
+            # maximum
+            return 1.0 if dH <= 0 else math.exp(-dH)
 
         a = 1.0 if prob(eps) > 0.5 else -1.0      # go up (+1) or down (-1)?
         for _ in range(max_tries):
