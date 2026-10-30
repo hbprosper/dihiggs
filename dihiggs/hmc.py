@@ -22,8 +22,9 @@
 #                      adaptation during warm-up, sample files, checkpoints.
 #   BNN                reads the sampled parameter files and computes the
 #                      posterior mean, standard deviation, quantiles, etc.
-#   autocorrelation, ess, rhat
-#                      convergence diagnostics.
+#   autocorrelation, ess, rhat, suggest_thinning
+#                      convergence diagnostics, and the thinning interval
+#                      that makes the saved samples nearly independent.
 #
 # This module deliberately imports nothing from dihiggs, so that it can be
 # moved to drwho unchanged.
@@ -39,7 +40,8 @@ import torch.nn as nn
 __all__ = ['ParameterView', 'HierarchicalPrior',
            'LaplaceLikelihood', 'GaussianLikelihood', 'PoissonLikelihood',
            'Posterior', 'HMC', 'BNN',
-           'autocorrelation', 'ess', 'rhat']
+           'autocorrelation', 'ess', 'rhat', 'suggest_thinning',
+           'read_csv']
 
 # ----------------------------------------------------------------------------
 # A note on three PyTorch idioms used throughout this file
@@ -635,8 +637,9 @@ class HMC:
       4. draw new tau_g given w, and a new noise scale given w (Gibbs).
 
     The first n_warmup iterations tune eps and the (diagonal) mass matrix M
-    and are not saved. After that, every thin-th iteration writes the current
-    parameters to outdir/samples/params_NNNN.pth.
+    and are not saved (see warmup_schedule for how the warm-up is divided).
+    After that, every thin-th iteration writes the current parameters to
+    outdir/samples/params_NNNN.pth.
 
     Arguments
     ---------
@@ -820,6 +823,61 @@ class HMC:
         w = m**(-kappa)
         d['log_eps_bar'] = w * d['log_eps'] + (1 - w) * d['log_eps_bar']
         self.eps = math.exp(d['log_eps'])
+
+    # ------------------------------------------------------------------------
+    # The warm-up schedule
+    # ------------------------------------------------------------------------
+    @staticmethod
+    def warmup_schedule(n_warmup, init_buffer=75, base_window=25,
+                        term_fraction=0.10, term_min=50):
+        '''
+        Divide the warm-up into three parts (the scheme used by Stan):
+
+          1. an initial buffer (iterations 1 .. init): only the step size is
+             tuned, while the chain moves from its starting point towards
+             the bulk of the posterior;
+          2. a series of windows whose lengths double (25, 50, 100, ...): at
+             the end of each window the mass matrix is set to the variance of
+             each parameter over that window, and the step-size tuning starts
+             again. The early, short windows give a rough mass matrix quickly;
+             the later, longer ones refine it. The last window is stretched
+             to end where the terminal buffer begins;
+          3. a terminal buffer: only the step size is tuned, for the final
+             mass matrix.
+
+        Returns (init, window_ends), where window_ends is the list of the
+        iterations at which the mass matrix is updated. Iterations are
+        counted from 1. If n_warmup is too short for this scheme the
+        proportions 15% / 75% / 10% are used with a single window, and if it
+        is shorter than 20, there is no mass-matrix adaptation:
+        window_ends = [].
+
+        Example: n_warmup = 1500 gives init = 75 and updates at iterations
+        100, 150, 250, 450 and 1350, followed by 150 iterations of step-size
+        tuning alone.
+        '''
+        n = int(n_warmup)
+        if n < 20:
+            return n, []
+        term = max(term_min, int(term_fraction * n))
+        if init_buffer + base_window + term > n:
+            # too short for the doubling scheme: one window
+            init = int(0.15 * n)
+            term = int(0.10 * n)
+            return init, [n - term]
+        init = init_buffer
+        last = n - term                 # the last window ends here
+        ends = []
+        start, size = init, base_window
+        while start < last:
+            end = start + size
+            # if the window after this one would not fit, stretch this one
+            # to the end of the adaptation period
+            if end + 2 * size > last:
+                end = last
+            ends.append(end)
+            start, size = end, 2 * size
+        return init, ends
 
     # ------------------------------------------------------------------------
     # Mass-matrix tuning: running variance of each parameter (Welford)
@@ -1009,12 +1067,15 @@ class HMC:
 
         n_warmup = self.n_warmup
         n_total  = n_warmup + int(n_samples) * int(thin)
-        # Warm-up windows: [0, w1) step size only; [w1, w2) also collect the
-        # variance of w for the mass matrix; at w2 set M^{-1} and restart the
-        # step-size tuning, which continues until the end of warm-up.
-        w1 = int(0.15 * n_warmup)
-        w2 = int(0.85 * n_warmup)
-        mass_on = self.adapt_mass and n_warmup >= 20
+        # The warm-up schedule (see warmup_schedule): the variance of w is
+        # collected from iteration init+1 to the end of the last window, and
+        # the mass matrix M^{-1} is reset at the end of every window.
+        init, window_ends = self.warmup_schedule(n_warmup)
+        mass_on = self.adapt_mass and len(window_ends) > 0
+        if mass_on and not resume:
+            print(f'warm-up: step size only for iterations 1-{init}; mass '
+                  f'matrix updated at iterations {window_ends}; step size '
+                  f'only from {window_ends[-1] + 1} to {n_warmup}')
 
         header = self._trace_header()
         self._last = self.snapshot()
@@ -1051,13 +1112,20 @@ class HMC:
                 # warm-up tuning
                 if warm:
                     self._da_update(prob)
-                    if mass_on and w1 <= it <= w2:
+                    if mass_on and init < it <= window_ends[-1]:
                         self._welford_add(self.w)
-                    if mass_on and it == w2:
+                    if mass_on and it in window_ends:
+                        # end of a window: new mass matrix from the variance
+                        # of w over the window (_welford_mass also starts a
+                        # fresh variance for the next window), then find a
+                        # step size that suits it and restart the tuning
                         self.mass_inv = self._welford_mass()
                         self.eps = self.find_step_size(self.eps)
                         self._refresh()
                         self._da_start(self.eps)
+                        if print_every:
+                            print(f'{it:6d}/{n_total} mass matrix updated; '
+                                  f'new step size {self.eps:.3e}', flush=True)
                     if it == n_warmup:
                         # freeze the step size at its averaged value
                         self.eps = math.exp(self._da['log_eps_bar'])
@@ -1152,7 +1220,13 @@ class BNN:
     rundir        : the run folder. Every file samples/params_*.pth inside it,
                     including inside chain_*/ sub-folders, is used.
     device        : where to compute (default: CPU).
-    max_samples   : use at most this many samples (evenly spaced).
+    skip          : ignore the first `skip` samples of each chain.
+    every         : then use only every `every`-th sample of each chain
+                    (thinning). Successive HMC samples are correlated; with
+                    every = K, where K is about the autocorrelation time
+                    (see suggest_thinning), the samples kept are close to
+                    independent draws from the posterior.
+    max_samples   : finally, use at most this many samples (evenly spaced).
 
     Example
     -------
@@ -1160,13 +1234,35 @@ class BNN:
         mu  = bnn.mean(x)            # posterior mean, one value per row of x
         sd  = bnn.std(x)
         lo, hi = bnn.interval(x, 0.68)
+
+        K, _  = suggest_thinning('runs/BNN_laplace')
+        small = BNN(HEFTNet, 'runs/BNN_laplace', every=K)
+        small.export('runs/BNN_laplace_thinned')  # a compact ensemble
     '''
-    def __init__(self, model_factory, rundir, device='cpu', max_samples=None):
+    def __init__(self, model_factory, rundir, device='cpu', skip=0, every=1,
+                 max_samples=None):
         pattern = os.path.join(rundir, '**', 'params_*.pth')
-        files = sorted(f for f in glob.glob(pattern, recursive=True)
-                       if os.path.basename(os.path.dirname(f)) == 'samples')
+        files = [f for f in glob.glob(pattern, recursive=True)
+                 if os.path.basename(os.path.dirname(f)) == 'samples']
         if not files:
             raise FileNotFoundError(f'BNN: no samples/params_*.pth in {rundir}')
+
+        # Group the files by folder (one folder per chain) and sort each
+        # group by sample NUMBER: sorting the names as text would put
+        # params_10000 before params_9999.
+        def number(f):
+            return int(os.path.basename(f)[len('params_'):-len('.pth')])
+        folders = sorted(set(os.path.dirname(f) for f in files))
+        selected = []
+        for folder in folders:
+            chain = sorted((f for f in files if os.path.dirname(f) == folder),
+                           key=number)
+            # chain[skip::every] means: start at position skip, then take
+            # every every-th file (Python's slice notation start:stop:step)
+            selected += chain[int(skip)::int(every)]
+        files = selected
+        if not files:
+            raise ValueError('BNN: skip and every leave no samples')
         if max_samples is not None and len(files) > max_samples:
             keep = np.linspace(0, len(files) - 1, max_samples).astype(int)
             files = [files[i] for i in keep]
@@ -1176,14 +1272,51 @@ class BNN:
         # for HEFTNet)
         self.states = [torch.load(f, map_location=device, weights_only=True)
                        for f in files]
-        # the noise scale of each sample, from samples/index.csv
-        self.scales = []
+
+        # The noise scale and HMC iteration of each sample, from the
+        # samples/index.csv of its folder (each index file is read once)
+        indexes = {}
+        self.scales, self.iterations = [], []
         for f in files:
-            index = read_csv(os.path.join(os.path.dirname(f), 'index.csv'))
-            k = list(index['file']).index(os.path.basename(f))
+            folder = os.path.dirname(f)
+            if folder not in indexes:
+                index = read_csv(os.path.join(folder, 'index.csv'))
+                # a dictionary {file name: row number in the index}
+                indexes[folder] = (index, {name: k for k, name in
+                                           enumerate(index['file'])})
+            index, row_of = indexes[folder]
+            k = row_of[os.path.basename(f)]
             self.scales.append(float(index['scale'][k]))
+            self.iterations.append(int(index['iteration'][k]))
         self.model = model_factory().to(device)
         self.model.eval()
+
+    def export(self, outdir):
+        '''
+        Write the samples in use to a new, self-contained folder:
+            outdir/samples/params_0001.pth, params_0002.pth, ...
+            outdir/samples/index.csv
+        The index records, for each new file, the file it was copied from,
+        the HMC iteration and the noise scale. The folder can be read back
+        with BNN(model_factory, outdir) and given to users of the model.
+        '''
+        import shutil
+        sampledir = os.path.join(outdir, 'samples')
+        if os.path.exists(sampledir) and glob.glob(
+                os.path.join(sampledir, 'params_*.pth')):
+            raise FileExistsError(f'{sampledir} already holds samples; '
+                                  'choose another folder')
+        os.makedirs(sampledir, exist_ok=True)
+        with open(os.path.join(sampledir, 'index.csv'), 'w',
+                  newline='') as out:
+            writer = csv.writer(out)
+            writer.writerow(['file', 'iteration', 'scale', 'source'])
+            for n, (f, it, sc) in enumerate(zip(self.files, self.iterations,
+                                                self.scales), start=1):
+                name = f'params_{n:04d}.pth'
+                shutil.copyfile(f, os.path.join(sampledir, name))
+                writer.writerow([name, it, f'{sc:.6g}', f])
+        print(f'wrote {len(self.files)} samples to {sampledir}')
 
     def __len__(self):
         return len(self.states)
@@ -1311,6 +1444,48 @@ def ess(y):
         total += pair
     tau = 2 * total - 1        # integrated autocorrelation time
     return n / max(tau, 1e-12)
+
+
+def suggest_thinning(source, keys=None):
+    '''
+    Suggest the thinning interval K for BNN(..., every=K): the integrated
+    autocorrelation time, N / ESS, of the slowest of the monitored
+    quantities, rounded up, over the sampling phase of every chain.
+
+    source : a run folder (every *_hmc_trace.csv inside it, including in
+             chain_*/ sub-folders, is used) or a single trace file.
+    keys   : the trace columns to consider. Default: U and the monitor
+             values m_0, m_1, ... (the quantities we care about). The prior
+             precisions tau_g can be added, but they are not predictions.
+
+    Returns (K, times), where times = {(trace file, key): time}.
+
+    Caveat: the predictions at points other than the monitored ones may mix
+    more slowly. K is a guide, not a guarantee; the effective sample size
+    of the thinned ensemble should be close to its number of samples.
+    '''
+    if os.path.isdir(source):
+        traces = sorted(glob.glob(os.path.join(source, '**', '*_hmc_trace.csv'),
+                                  recursive=True))
+    else:
+        traces = [source]
+    if not traces:
+        raise FileNotFoundError(f'suggest_thinning: no trace in {source}')
+    times = {}
+    for tf in traces:
+        tr = read_csv(tf)
+        sample = tr['phase'] == 'sample'
+        if sample.sum() < 10:
+            continue
+        cols = keys if keys is not None else \
+            ['U'] + sorted(k for k in tr if k.startswith('m_'))
+        for key in cols:
+            y = tr[key][sample]
+            times[(tf, key)] = len(y) / ess(y)
+    if not times:
+        raise ValueError('suggest_thinning: too few samples in the traces')
+    K = int(math.ceil(max(times.values())))
+    return max(K, 1), times
 
 
 def rhat(chains):

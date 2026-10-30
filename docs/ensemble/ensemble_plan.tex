@@ -1,0 +1,610 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{mathpazo}
+\usepackage{amsmath,amssymb}
+\usepackage{microtype}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage[dvipsnames]{xcolor}
+\usepackage{tikz}
+\usetikzlibrary{positioning,arrows.meta,calc,fit,backgrounds}
+\usepackage[most]{tcolorbox}
+\usepackage{enumitem}
+\usepackage{listings}
+\usepackage[font=small,labelfont=bf]{caption}
+\usepackage{hyperref}
+\hypersetup{colorlinks=true,linkcolor=MidnightBlue,citecolor=MidnightBlue,urlcolor=MidnightBlue}
+\usepackage{cleveref}
+\urlstyle{tt}
+\def\UrlBreaks{\do\_\do/\do.}
+\newcommand{\file}[1]{\nolinkurl{#1}}
+\newcommand{\code}[1]{\texttt{#1}}
+\newcommand{\mhh}{m_{hh}}
+\newcommand{\bw}{\boldsymbol{\omega}}
+\newcommand{\bp}{\boldsymbol{p}}
+\newcommand{\bx}{\boldsymbol{x}}
+\newcommand{\data}{\mathcal{D}}
+
+\definecolor{trainable}{HTML}{1B6CA8}
+\definecolor{physics}{HTML}{2E933C}
+\definecolor{datac}{HTML}{7B4EA3}
+\definecolor{warn}{HTML}{C0392B}
+
+\newtcolorbox{keyidea}[1][]{enhanced,breakable,colback=physics!6,colframe=physics!70!black,
+  fonttitle=\bfseries,title={#1},boxrule=0.6pt,arc=2pt,left=6pt,right=6pt}
+\newtcolorbox{aside}[1][]{enhanced,breakable,colback=trainable!5,colframe=trainable!70!black,
+  fonttitle=\bfseries,title={#1},boxrule=0.6pt,arc=2pt,left=6pt,right=6pt}
+\newtcolorbox{assume}[1][]{enhanced,breakable,colback=datac!5,colframe=datac!70!black,
+  fonttitle=\bfseries,title={#1},boxrule=0.6pt,arc=2pt,left=6pt,right=6pt}
+\newtcolorbox{watch}[1][]{enhanced,breakable,colback=warn!5,colframe=warn!70!black,
+  fonttitle=\bfseries,title={#1},boxrule=0.6pt,arc=2pt,left=6pt,right=6pt}
+\setlist{itemsep=2pt,topsep=3pt}
+\setlength{\emergencystretch}{3em}
+
+\lstset{language=Python, basicstyle=\ttfamily\small, columns=fullflexible,
+  keepspaces=true, commentstyle=\color{physics!70!black}\itshape,
+  keywordstyle=\color{trainable!90!black}\bfseries, stringstyle=\color{datac},
+  showstringspaces=false, frame=single, rulecolor=\color{gray!40},
+  backgroundcolor=\color{gray!3}, xleftmargin=4pt, xrightmargin=4pt,
+  aboveskip=6pt, belowskip=6pt}
+
+\title{\textbf{A bootstrap ensemble of \texttt{HEFTNet} models}\\[4pt]
+\large Plan for \texttt{heft\_train\_ensemble.ipynb} and \texttt{dihiggs/ensemble.py}\\[4pt]
+\normalsize Revised plan: bootstrap of the training rows. For approval before any code is written}
+\date{October 30, 2026 (supersedes the first version of the same date)}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+\noindent
+The first Bayesian neural network run (\file{docs/bnn/bnn_run1.pdf}) gave credible
+bands about 17 times narrower than the model's actual error, partly because a single
+HMC chain explores a single valley of the posterior. This plan describes a
+complementary, frequentist approach: train many copies of \code{HEFTNet}, each on a
+\emph{bootstrap} resample of the training rows and with its own random seed, and use the
+spread of their predictions as an estimate of the standard error of the trained network.
+A second ensemble, which varies only the seed, separates the part of that spread due to
+the optimisation (which valley) from the part due to the finite training sample. The
+first version of this plan resampled whole spectra; following our discussion, it now
+resamples the training data themselves, as the pipeline sees them. Which resampling is
+``right'' is an instance of a classic and unresolved problem of statistical inference,
+the choice of the \emph{reference ensemble}, discussed in \cref{sec:reference}. The work
+is a new notebook, \file{code/heft_train_ensemble.ipynb}, and a small new module,
+\file{dihiggs/ensemble.py}. Nothing will be written until you approve; the decisions
+needed are collected in \cref{sec:decisions}.
+\end{abstract}
+
+\begin{keyidea}[The proposal in brief]
+\begin{enumerate}
+  \item \textbf{Two ensembles} of $M = 20$ members each (\cref{tab:ensembles}):
+    \code{'seeds'} (the training rows as they are, different seeds) and
+    \code{'bootstrap'} (the training rows resampled with replacement, different seeds).
+  \item \textbf{The bootstrap embeds our sample in the population it was drawn from,}
+    as seen by the pipeline: the training rows are regarded as independent draws from a
+    (discrete, complicated) distribution $P$, and each bootstrap set is a draw of the
+    same size from the empirical distribution of those rows.
+  \item \textbf{The split of \file{heft_train.ipynb} is kept exactly:} the same training,
+    validation and quick-test rows. Only the training rows are resampled; the
+    validation rows are the same for every member.
+  \item \textbf{Each member is trained exactly as in \file{heft_train.ipynb}} and saved as an
+    ordinary run folder, so \file{heft_test.ipynb} and \file{heft_export.ipynb} work with
+    any member.
+  \item \textbf{An \code{Ensemble} class} with the same methods as \code{hmc.BNN}.
+  \item \textbf{The test,} on the 1,000 holdout spectra: is the ensemble spread, added to
+    the POWHEG noise, the size of the actual differences from POWHEG?
+  \item \textbf{The reference-ensemble problem} (\cref{sec:reference}): the answer depends
+    on the population into which the sample is embedded, and there is no unique choice.
+    The plan states its choice explicitly.
+\end{enumerate}
+\end{keyidea}
+
+\tableofcontents
+
+% ===========================================================================
+\section{Why an ensemble}
+\label{sec:why}
+
+The BNN run showed three reasons why a single chain's band is too narrow
+(\file{bnn_run1.pdf}, \S6): incomplete exploration of the valley it is in; other valleys,
+in which equally good networks give different predictions where the data constrain them
+weakly; and the model's own systematic error, which no spread of parameters within one
+model describes. An ensemble of independently trained networks addresses the second
+directly. Each training run, started from different random weights and fed batches in a
+different order, ends in a different valley. Large studies have found that such
+``deep ensembles'' reproduce the predictions of long, full-data HMC better than most
+other approximations, precisely because they visit several valleys~\cite{izmailov2021,
+wilson2020, lakshminarayanan2017}. Resampling the training data as well, by the
+bootstrap~\cite{efron1979, efron1993}, adds the variation that any estimator has because
+its training set is one finite sample.
+
+% ===========================================================================
+\section{What the ensemble estimates}
+\label{sec:what}
+
+\subsection{The frequentist view}
+
+Think of the whole training procedure as an \emph{estimator}: it takes a training set
+$D$ and a random seed $s$ and returns a function $\hat f(\bx; D, s)$. Had the training set
+been a different draw from the same population, or had the seed been different, the
+result would have been different. So $\hat f(\bx)$ at a fixed point $\bx$ is a random
+variable, with a mean and a variance. Its standard deviation is the \emph{standard error}
+of the trained network at $\bx$, the frequentist counterpart of the width of a Bayesian
+band.
+
+\begin{aside}[The bootstrap principle]
+We have only one training set, so the distribution of $\hat f$ over training sets cannot
+be observed directly. The bootstrap~\cite{efron1979, efron1993} replaces the unknown
+distribution $P$ from which the $N$ training rows were drawn by their \emph{empirical}
+distribution $\hat P$, which puts probability $1/N$ on each row. A bootstrap training set
+$D^*$ is a sample of $N$ rows drawn from $\hat P$, i.e.\ drawn from the training rows
+\emph{with replacement}. On average it contains $1 - (1 - 1/N)^N \approx 1 - e^{-1}
+\approx 63.2\%$ of the distinct rows, some of them several times. The spread of
+$\hat f(\bx; D^*_m, s_m)$ over $m = 1, \ldots, M$ estimates the spread of $\hat f$ over
+training sets drawn from $P$.
+\end{aside}
+
+\begin{aside}[Your thought experiment]
+Suppose the colleague had generated a hundred times more data, and the pipeline were run
+on each of 100 disjoint pieces of it. The spread of the 100 trained networks is the
+quantity of interest: the sampling variability of the procedure at the size of data we
+actually have. Each piece is a draw from $P$, and the bootstrap mimics such draws by
+drawing from $\hat P$. The quality of the mimicry rests on $\hat P$ being close to $P$,
+which, with 274,152 training rows, is a reasonable expectation for the smooth functionals
+that a trained network represents.
+\end{aside}
+
+\subsection{Separating the two sources}
+\label{sec:decomp}
+
+The law of total variance splits the variance of $\hat f$ at $\bx$ into an optimisation
+part and a data part:
+\begin{equation}
+  \underbrace{\operatorname{Var}_{D,s}\bigl[\hat f\bigr]}_{\text{total}}
+  \;=\;
+  \underbrace{\operatorname{E}_{D}\Bigl[\operatorname{Var}_{s}\bigl[\hat f \mid D\bigr]\Bigr]}_{\text{optimisation: which valley}}
+  \;+\;
+  \underbrace{\operatorname{Var}_{D}\Bigl[\operatorname{E}_{s}\bigl[\hat f \mid D\bigr]\Bigr]}_{\text{data: which sample}} .
+  \label{eq:totvar}
+\end{equation}
+The two ensembles of \cref{tab:ensembles} estimate the first term and the total. The data
+term is their difference, assuming that the optimisation spread is about the same for a
+bootstrap set as for the original set.
+
+\begin{table}[h]
+\centering\small
+\begin{tabular}{lllll}
+\toprule
+\code{MODE} & training rows of member $m$ & seed & estimates & run folder\\
+\midrule
+\code{'seeds'} & the 274,152 training rows & \code{SEED} $+ m$ & optimisation term & \file{runs/ENS_seeds}\\
+\code{'bootstrap'} & 274,152 rows drawn from them & \code{SEED} $+ m$ & total & \file{runs/ENS_bootstrap}\\
+\bottomrule
+\end{tabular}
+\caption{The two ensembles. Member $m$ uses the same seed in both, so the two members
+start from the same initial weights; only the training rows differ.}
+\label{tab:ensembles}
+\end{table}
+
+\begin{watch}[What neither ensemble captures: the shared bias]
+All members have the same architecture, the same loss and the same training schedule. If
+they all miss the plateau just above threshold in the same way, they agree with each
+other, and the spread stays small however many members there are. The bootstrap standard
+error is an honest error bar on the \emph{estimator} $\hat f$, not on the true cross
+section, unless the bias $\operatorname{E}[\hat f] - \sigma_\text{true}$ is small compared
+with it. Near threshold it may not be. The test of \cref{sec:test} is designed to show
+whether it is.
+\end{watch}
+
+\subsection{How many members?}
+
+The standard deviation of $M$ draws is itself uncertain, by a relative amount of about
+$1/\sqrt{2(M - 1)}$:
+
+\begin{center}
+\small
+\begin{tabular}{lcccc}
+\toprule
+$M$ & 10 & 20 & 50 & 100\\
+\midrule
+relative uncertainty of the standard deviation & 24\% & 16\% & 10\% & 7\%\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\noindent I propose $M = 20$ per ensemble, enough to tell a factor of two in width, which
+is the level of the questions we are asking. Members can be added later without redoing
+the others.
+
+% ===========================================================================
+\section{The reference-ensemble problem}
+\label{sec:reference}
+
+\subsection{The problem}
+
+Every frequentist statement, a standard error, a confidence level, a $p$-value, is a
+statement about an \emph{ensemble}: the imagined infinite collection of repetitions of
+the experiment of which the one we performed is regarded as a member. The data do not
+determine that ensemble. A single sample can be embedded in many populations, each
+consistent with how it was obtained, and each giving a different answer. This is the
+statistical form of the \emph{reference class problem}, as old as the frequency theory
+of probability itself: Venn~\cite{venn1866} noted that an individual belongs to many
+classes, in which the frequency of an attribute differs, and Reichenbach~\cite{reichenbach1949}
+proposed, without a general prescription for finding it, to take the narrowest class for
+which reliable statistics exist. H\'ajek~\cite{hajek2007} argues that every
+interpretation of probability, the Bayesian included, faces a version of the problem.
+
+Within statistics proper, Fisher~\cite{fisher1956} insisted that the reference set must
+contain no \emph{recognisable subset}: no subset, identifiable from the data, in which the
+frequencies differ. Cox's famous example~\cite{cox1958} makes the point. A measurement is
+made with one of two instruments, one precise and one imprecise, chosen by the toss of a
+coin. The ensemble of all repetitions, in which either instrument may be used, gives a
+valid confidence interval for the unconditional coverage; but once we know which
+instrument was used, the relevant ensemble is surely the repetitions with \emph{that}
+instrument, and the unconditional interval is too wide for one and too narrow for the
+other. Buehler~\cite{buehler1959} and Robinson~\cite{robinson1975} turned Fisher's remark
+into a criterion and showed that standard confidence intervals can have
+\emph{relevant subsets} in which their coverage is systematically different. The
+conditionality principle, made formal by Birnbaum~\cite{birnbaum1962} (see also
+\cite{berger1988}), says one should condition on such ancillary information; carried to
+its conclusion, together with sufficiency, it leads to the likelihood principle, under
+which the ensemble disappears altogether, which is precisely what the frequentist cannot
+accept. The problem is therefore not a technical gap but a fault line between schools of
+inference; Cox and Hinkley~\cite{coxhinkley1974} and, for physicists,
+Cousins~\cite{cousins1995} give balanced accounts.
+
+\begin{aside}[An analogy from statistical mechanics]
+The same system can be described by the microcanonical, canonical or grand canonical
+ensemble, depending on what is held fixed: the energy, the temperature, the particle
+number. The ensembles agree on some quantities and not on others, notably fluctuations.
+The choice is not dictated by the system but by the question asked and by what is
+regarded as fixed in the imagined repetitions. Reference ensembles in statistics behave in
+the same way.
+\end{aside}
+
+\subsection{How it shows up in the bootstrap}
+
+The bootstrap does not escape the problem; it makes it concrete. The resampling scheme
+\emph{is} the choice of reference ensemble. For regression, the classic distinction is
+between resampling the \emph{pairs} $(\bx_i, t_i)$, which treats the inputs as random,
+and resampling the \emph{residuals} at fixed inputs, which treats them as
+fixed~\cite{freedman1981, wu1986, davison1997}. Freedman showed that both are valid,
+under their own assumptions, and that they estimate different variances when the model is
+wrong or the noise heteroscedastic; Davison and Hinkley's guiding rule is that the
+resampling scheme should mimic the way the data were generated~\cite{davison1997},
+which presupposes an answer to the question of which features of that way are to be held
+fixed. For our data at least three embeddings are defensible:
+
+\begin{center}
+\small
+\begin{tabular}{p{0.21\textwidth}p{0.33\textwidth}p{0.38\textwidth}}
+\toprule
+resample & imagined repetition & regarded as fixed\\
+\midrule
+\textbf{training rows} (this plan) & new independent draws of rows $(\bx, t)$ from $P$ &
+  the population $P$ of rows, as the pipeline sees them\\
+whole spectra & a new set of HEFT points $\theta$, each with a new POWHEG run &
+  the distribution from which $\theta$ is drawn\\
+POWHEG noise only & new events at the \emph{same} HEFT points (a residual or parametric
+  bootstrap, using the known event weights $w_j$) & the HEFT points and the bins\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\noindent Each answers a well-posed question, and the questions differ in what is held
+fixed. None is uniquely correct, and the data cannot choose between them. The row
+bootstrap chosen here treats the training data as the pipeline does: a large collection of
+rows from one distribution, with no further structure. It is the most direct expression
+of your thought experiment, in which the pipeline is simply re-run on more data of the
+same kind.
+
+\begin{keyidea}[The working stance]
+\begin{enumerate}
+  \item \textbf{State the ensemble.} Every number this ensemble produces is a standard
+    error with respect to repetitions in which the training rows are independent draws
+    from the population $P$ of rows. The report will say so.
+  \item \textbf{Calibrate empirically.} Whatever the reference ensemble, the holdout
+    spectra provide a test that does not depend on it: whether the spread, combined with
+    the POWHEG noise, matches the actual differences from POWHEG (\cref{sec:test}). This
+    is the frequentist's own way out: coverage, checked on data not used for training.
+  \item \textbf{Treat the other embeddings as sensitivity checks,} if the result invites
+    them. If, for example, the bootstrap spread proves too small near threshold, the noise
+    bootstrap would tell whether the POWHEG statistics alone account for more.
+\end{enumerate}
+\end{keyidea}
+
+\begin{aside}[And the Bayesian?]
+The Bayesian conditions on the data actually observed and needs no ensemble of
+repetitions; Cox's two instruments raise no difficulty. But the problem returns in another
+form: the choice of the model and the prior, and the likelihood itself, embody
+assumptions about how the data arose. Our BNN, for example, treats the 274,152 rows as
+conditionally independent given the parameters, which is also a statement about the
+population. The posterior predictive checks of Gelman, Meng and Stern~\cite{gelman1996}
+face the analogous choice explicitly: which features of the data are held fixed in the
+replications.
+\end{aside}
+
+% ===========================================================================
+\section{Resampling the training rows}
+\label{sec:resample}
+
+\begin{figure}[h]
+\centering
+\resizebox{\textwidth}{!}{%
+\begin{tikzpicture}[
+  font=\small, >={Stealth[length=2.2mm]},
+  box/.style={draw, rounded corners=2pt, thick, align=center, inner sep=3pt,
+              minimum height=11mm, text width=30mm},
+  dat/.style={box, fill=datac!8, draw=datac!80!black},
+  nbk/.style={box, fill=trainable!10, draw=trainable!80!black},
+  res/.style={box, fill=physics!10, draw=physics!80!black},
+]
+\node[dat] (file) at (0, 0) {training file\\\footnotesize 317,306 rows};
+\node[dat] (val)  at (4.6, 1.9) {validation + quick test\\\footnotesize 5,078 + 38,076 rows, fixed};
+\node[dat] (pool) at (4.6, -1.9) {training rows\\\footnotesize 274,152};
+\node[nbk] (draw) at (9.6, -1.9) {member $m$: draw 274,152 rows with replacement};
+\node[res] (rows) at (14.6, -1.9) {its training set ($\approx$ 63\% distinct rows)};
+\node[res] (oob)  at (14.6, 1.9) {its out-of-bag rows ($\approx$ 37\%)};
+\draw[->, thick] (file) -- node[above left, font=\footnotesize]{split of \file{heft_train}} (val);
+\draw[->, thick] (file) -- (pool);
+\draw[->, thick] (pool) -- node[below=2pt, font=\footnotesize, align=center]{seed\\\code{BOOT\_SEED} + $m$} (draw);
+\draw[->, thick] (draw) -- (rows);
+\draw[->, thick, dashed] (draw) -- node[above left, font=\footnotesize]{not drawn} (oob);
+\end{tikzpicture}}
+\caption{How the training set of one bootstrap member is formed. The split into training,
+validation and quick-test rows is that of \file{heft_train.ipynb}, the same for all
+members of both ensembles.}
+\label{fig:resample}
+\end{figure}
+
+\begin{itemize}
+  \item \textbf{The split.} \file{heft_train.ipynb} takes the first 86.4\% of the rows of
+    the (already shuffled) training file for training, the next 1.6\% for validation and
+    the last 12\% as the quick test. The ensemble notebook uses exactly the same split, so
+    a \code{'seeds'} member is the \file{heft_train} model with a different seed, and only
+    the 274,152 training rows are resampled. The validation rows are therefore never
+    copies of training rows, and the validation loss, which chooses the saved parameters,
+    is unaffected by the resampling.
+  \item \textbf{The draw.} Member $m$ draws 274,152 indices uniformly, with replacement,
+    from the training rows, with \code{np.random.RandomState(BOOT\_SEED + m)}, whose
+    sequence is frozen across numpy versions. The drawn rows are in random order, so no
+    further shuffling is needed.
+  \item \textbf{Bookkeeping.} Each bootstrap member's folder gets
+    \file{bootstrap_counts.npz}: for each training row, how many times it was drawn
+    (compressed, about 100 kB). Together with \code{BOOT\_SEED} this makes every member
+    reproducible and identifies its \emph{out-of-bag} rows, those it never saw, which
+    give a free extra test of that member.
+  \item \textbf{Size.} A bootstrap set has as many rows as the original, so the training
+    schedule needs no change.
+\end{itemize}
+
+% ===========================================================================
+\section{Training the members}
+\label{sec:train}
+
+Each member is trained with the code of \file{heft_train.ipynb}, unchanged except for the
+training rows: L1 loss, Adam, batch size 2,048, 200,000 iterations in four learning-rate
+steps from $2 \times 10^{-3}$, parameters saved at the best validation loss. Before member
+$m$ is built, \code{torch.manual\_seed(SEED + m)} and \code{np.random.seed(SEED + m)} fix
+its initial weights and its batch order.
+
+\paragraph{Run folders.} Member $m$ of an ensemble is saved in
+\file{runs/ENS_<mode>/member_01/}, \file{member_02/}, \ldots, each an ordinary run folder
+(\file{dihiggs_config.yaml}, \file{dihiggs_params.pth}, \file{dihiggs_losses.csv}), plus
+\file{bootstrap_counts.npz} for bootstrap members. The configuration records \code{MODE},
+the member number, both seeds and the training file's SHA-256. A summary file
+\file{runs/ENS_<mode>/ensemble.csv} has one row per member: seeds, number of distinct
+rows, best validation loss, out-of-bag loss, training time.
+
+\paragraph{Interruption and parallel running.} Members are trained one after another, and
+a member whose parameter file and summary row already exist is skipped, so an interrupted
+loop resumes where it stopped. A switch \code{MEMBERS} (e.g.\ \code{range(0, 10)})
+chooses which members a notebook trains, so that two or more copies of the notebook can
+train disjoint sets of members at the same time on the 5090. \code{HEFTNet} is small;
+several trainings fit on one GPU at once. Given the unstable connection to the 5090,
+running the notebook headless (\code{jupyter nbconvert --execute} inside \code{tmux}) is
+recommended.
+
+\paragraph{The real-time loss monitor.} \file{heft_train.ipynb} opens a window that plots
+the losses during training. In a loop over 20 members that would open 20 windows, so the
+ensemble notebook writes the loss files without starting the window; progress is printed
+instead.
+
+\paragraph{Cost.} About 42 minutes per member on a CPU; on the 5090 I expect a few minutes.
+The notebook times the first member and prints an estimate for the rest. The
+\code{N\_ITERATIONS} switch allows shorter members for a first trial.
+
+% ===========================================================================
+\section{The module \texttt{dihiggs/ensemble.py}}
+\label{sec:module}
+
+A class \code{Ensemble} with the same interface as \code{hmc.BNN}, so that analysis code
+can use either:
+
+\begin{lstlisting}
+from dihiggs import ensemble
+from dihiggs import heftnet as NN
+
+ens = ensemble.Ensemble(NN.HEFTNet, 'runs/ENS_bootstrap')  # every member_*/
+mu  = ens.mean(x)                  # ensemble mean, one value per row of x
+sd  = ens.std(x)                   # spread of the members (the standard error)
+lo, hi = ens.interval(x, cl=0.68)  # central 68% of the members
+A   = ens.apply(lambda m, x: m.coeffs(x), xs)   # a_i(m_hh) for every member
+\end{lstlisting}
+
+\noindent It reads \file{member_*/dihiggs_params.pth} by default (any file pattern can be
+given), and also provides \code{summary()}, the contents of \file{ensemble.csv}. Like
+\file{hmc.py}, it imports nothing from \code{dihiggs}, so it can move to \code{drwho}.
+\code{Ensemble} is written as a general ``ensemble of parameter files''; when both modules
+move to \code{drwho}, \code{hmc.BNN} can become a subclass of it. \file{hmc.py} is not
+changed now.
+
+% ===========================================================================
+\section{The notebook \texttt{heft\_train\_ensemble.ipynb}}
+\label{sec:notebook}
+
+In the style of \file{heft_train.ipynb} (header, Colab cell with \code{USE\_DRIVE},
+imports, device, data with its SHA-256), then:
+
+\begin{enumerate}
+  \item \textbf{Introduction} (markdown): the estimator view, the bootstrap, the
+    decomposition (\ref{eq:totvar}), and a short statement of the reference ensemble
+    used.
+  \item \textbf{Switches:} \code{MODE = 'bootstrap'} or \code{'seeds'};
+    \code{N\_MEMBERS = 20}; \code{MEMBERS = range(N\_MEMBERS)}; \code{SEED = 42};
+    \code{BOOT\_SEED = 1000}; \code{N\_ITERATIONS = 200\_000}.
+    \code{DIRNAME} = \file{ENS_<mode>}.
+  \item \textbf{The split} of \file{heft_train.ipynb}.
+  \item \textbf{One member's data:} a function returning the training rows of member $m$
+    and its counts.
+  \item \textbf{One member's training:} a function that builds the configuration, model,
+    optimiser, scheduler and monitor, trains, computes the out-of-bag loss and appends the
+    summary row; the training loop is that of \file{heft_train.ipynb}.
+  \item \textbf{The loop} over \code{MEMBERS}, skipping finished members.
+  \item \textbf{Results on the holdout spectra} (\cref{sec:test}): the ensemble mean
+    against POWHEG; spectra with ensemble bands; the spread against $\mhh$; the pull test;
+    and, when both ensembles exist, the decomposition (\ref{eq:totvar}) against $\mhh$, and
+    the comparison with the BNN run if there is one.
+\end{enumerate}
+
+% ===========================================================================
+\section{The test: is the spread the size of the error?}
+\label{sec:test}
+
+On the 1,000 holdout spectra, at every bin $k$ with POWHEG value $t_k$, POWHEG noise
+$\sigma_k$ (as in \file{heft_test.ipynb}), ensemble mean $\bar f_k$ and ensemble standard
+deviation $s_k$, form the pull
+\begin{equation}
+  z_k = \frac{t_k - \bar f_k}{\sqrt{\sigma_k^2 + s_k^2}} .
+  \label{eq:pull}
+\end{equation}
+If the ensemble spread describes the model's error, and the error and the POWHEG noise
+are independent, $z_k$ has mean 0 and standard deviation 1, and $|z_k| < 2$ for about
+95\% of bins. If the spread is too small, the standard deviation of $z$ is larger than 1.
+The same pull, with $s_k$ the posterior standard deviation, is computed for the BNN, so all
+are compared on one scale. Note that this test does not depend on the choice of reference
+ensemble (\cref{sec:reference}): it asks only whether the stated uncertainty matches the
+observed errors on spectra not used in training.
+
+\begin{center}
+\small
+\begin{tabular}{p{0.38\textwidth}p{0.54\textwidth}}
+\toprule
+quantity & reported\\
+\midrule
+accuracy of the ensemble mean & median $\chi^2/N$; fractions above 2 and 5; mean $\chi^2$
+  per bin at 255--555 GeV and above; against the single members and the L1 model\\
+width & $s_k/\sigma_k$: median, distribution, against $\mhh$\\
+calibration & standard deviation of $z$; fraction $|z| < 2$; both against $\mhh$\\
+decomposition & optimisation and data terms of (\ref{eq:totvar}) against $\mhh$\\
+out-of-bag (bootstrap only) & each member's loss on the rows it did not see, against its
+  validation loss\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\paragraph{What counts as success.}
+\begin{enumerate}
+  \item The ensemble mean is at least as accurate as a single L1 model, as averaging over
+    members usually makes it.
+  \item The spread is \emph{informative}: larger where the model is known to be weak (near
+    threshold) than elsewhere.
+  \item The standard deviation of $z$ is close to 1 above about 555 GeV. Near threshold I
+    expect it to exceed 1, because of the shared bias; how much it exceeds 1 measures that
+    bias, which is itself a useful number.
+\end{enumerate}
+
+% ===========================================================================
+\section{Links with the BNN}
+
+\begin{itemize}
+  \item \textbf{Starting points for several HMC chains.} The members of the
+    \code{'seeds'} ensemble lie in different valleys. Starting four BNN chains from four of
+    them makes $\hat R$ across chains a real test for several valleys. This needs a small
+    option in \file{heft_train_bnn.ipynb}, \code{START\_FROM}, a list of parameter files,
+    one per chain, to be added after this plan.
+  \item \textbf{A common yardstick.} The pull (\ref{eq:pull}) puts the BNN band, the two
+    ensemble spreads and the POWHEG noise on one scale.
+\end{itemize}
+
+% ===========================================================================
+\section{Not in this plan}
+\begin{itemize}
+  \item No change to \file{heft_train.ipynb}, \file{heft_test.ipynb}, \file{hmc.py} or the
+    data files.
+  \item The spectrum and noise bootstraps of \cref{sec:reference}; the noise bootstrap is
+    a natural sensitivity check later, if the results call for one.
+  \item The \code{START\_FROM} option of the BNN notebook, and the tempered likelihood,
+    are separate steps.
+  \item Bootstrap confidence intervals more refined than the spread (percentile, BCa) are
+    left out: with $M = 20$ only the standard deviation is well determined.
+  \item Nothing is committed to git.
+\end{itemize}
+
+% ===========================================================================
+\section{Decisions for you}
+\label{sec:decisions}
+
+\begin{keyidea}[Decisions before I proceed]
+\begin{enumerate}
+  \item \textbf{Two ensembles,} \code{'seeds'} and \code{'bootstrap'} (rows), $M = 20$
+    each. Agreed, or start with 10?
+  \item \textbf{The split of \file{heft_train.ipynb}}, with only the 274,152 training rows
+    resampled. Agreed?
+  \item \textbf{The training recipe} of \file{heft_train.ipynb}, unchanged (L1, 200,000
+    iterations). Agreed?
+  \item \textbf{No real-time monitor window} during ensemble training; printed progress
+    instead. Agreed?
+  \item \textbf{\code{Ensemble} as a new module,} \file{dihiggs/ensemble.py}, leaving
+    \file{hmc.py} unchanged for now. Agreed?
+  \item \textbf{Folder names:} \file{runs/ENS_seeds/member_01/}, \ldots. Acceptable?
+  \item \textbf{This document} replaces the first version at
+    \file{docs/ensemble/ensemble_plan.pdf}. Agreed?
+\end{enumerate}
+\end{keyidea}
+
+% ===========================================================================
+\begin{thebibliography}{99}
+\bibitem{venn1866} J.~Venn, \emph{The Logic of Chance}, Macmillan (1866).
+\bibitem{reichenbach1949} H.~Reichenbach, \emph{The Theory of Probability}, University of
+  California Press (1949).
+\bibitem{hajek2007} A.~H\'ajek, ``The reference class problem is your problem too'',
+  Synthese \textbf{156} (2007) 563.
+\bibitem{fisher1956} R.~A.~Fisher, \emph{Statistical Methods and Scientific Inference},
+  Oliver and Boyd (1956).
+\bibitem{cox1958} D.~R.~Cox, ``Some problems connected with statistical inference'', Ann.\
+  Math.\ Statist.\ \textbf{29} (1958) 357.
+\bibitem{buehler1959} R.~J.~Buehler, ``Some validity criteria for statistical inferences'',
+  Ann.\ Math.\ Statist.\ \textbf{30} (1959) 845.
+\bibitem{robinson1975} G.~K.~Robinson, ``Some counterexamples to the theory of confidence
+  intervals'', Biometrika \textbf{62} (1975) 155.
+\bibitem{birnbaum1962} A.~Birnbaum, ``On the foundations of statistical inference'', J.\
+  Amer.\ Statist.\ Assoc.\ \textbf{57} (1962) 269.
+\bibitem{berger1988} J.~O.~Berger and R.~L.~Wolpert, \emph{The Likelihood Principle}, 2nd
+  ed., IMS Lecture Notes--Monograph Series \textbf{6} (1988).
+\bibitem{coxhinkley1974} D.~R.~Cox and D.~V.~Hinkley, \emph{Theoretical Statistics},
+  Chapman \& Hall (1974).
+\bibitem{cousins1995} R.~D.~Cousins, ``Why isn't every physicist a Bayesian?'', Am.\ J.\
+  Phys.\ \textbf{63} (1995) 398.
+\bibitem{efron1979} B.~Efron, ``Bootstrap methods: another look at the jackknife'', Ann.\
+  Statist.\ \textbf{7} (1979) 1.
+\bibitem{efron1993} B.~Efron and R.~J.~Tibshirani, \emph{An Introduction to the
+  Bootstrap}, Chapman \& Hall/CRC (1993).
+\bibitem{freedman1981} D.~A.~Freedman, ``Bootstrapping regression models'', Ann.\ Statist.\
+  \textbf{9} (1981) 1218.
+\bibitem{wu1986} C.~F.~J.~Wu, ``Jackknife, bootstrap and other resampling methods in
+  regression analysis'', Ann.\ Statist.\ \textbf{14} (1986) 1261.
+\bibitem{davison1997} A.~C.~Davison and D.~V.~Hinkley, \emph{Bootstrap Methods and their
+  Application}, Cambridge University Press (1997).
+\bibitem{gelman1996} A.~Gelman, X.-L.~Meng and H.~Stern, ``Posterior predictive assessment
+  of model fitness via realized discrepancies'', Statistica Sinica \textbf{6} (1996) 733.
+\bibitem{lakshminarayanan2017} B.~Lakshminarayanan, A.~Pritzel and C.~Blundell, ``Simple
+  and scalable predictive uncertainty estimation using deep ensembles'', NeurIPS 2017,
+  arXiv:1612.01474.
+\bibitem{wilson2020} A.~G.~Wilson and P.~Izmailov, ``Bayesian deep learning and a
+  probabilistic perspective of generalization'', NeurIPS 2020, arXiv:2002.08791.
+\bibitem{izmailov2021} P.~Izmailov, S.~Vikram, M.~D.~Hoffman and A.~G.~Wilson, ``What are
+  Bayesian neural network posteriors really like?'', ICML 2021, arXiv:2104.14421.
+\end{thebibliography}
+
+\end{document}
