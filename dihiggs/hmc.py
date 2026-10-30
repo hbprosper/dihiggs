@@ -361,15 +361,18 @@ class HierarchicalPrior:
 # 3. Likelihoods
 # ============================================================================
 # Each likelihood provides
-#   neg_log(f, t)  minus the log-likelihood summed over the rows given,
-#                  keeping only terms that depend on the predictions f;
-#   statistic(f, t) the summed quantity needed for the Gibbs update of the
+#   neg_log(f, t, rows)  minus the log-likelihood summed over the rows
+#                  given, keeping only terms that depend on the predictions f;
+#   statistic(f, t, rows) the summed quantity needed for the Gibbs update of the
 #                  noise scale (e.g. sum |t - f| for the Laplace likelihood);
 #   gibbs(stat, n, rng)  draws a new noise scale;
 #   noise(f, generator)  simulated noise, for predictive bands.
 #
-# The targets t may have several columns. Column 0 is always the value to be
-# predicted; PoissonLikelihood reads the known noise variance from column 1.
+# The targets t have shape [N] or [N, 1]: the target is ONLY the quantity to
+# be predicted. "rows" is a Python slice saying which rows of the training
+# data f and t are (the Posterior works through the data in chunks). Only
+# PoissonLikelihood needs it, to pick out the known noise variances of those
+# rows; the other likelihoods ignore it.
 # ----------------------------------------------------------------------------
 def _target(t):
     # column 0 of the targets, as a 1-dimensional tensor
@@ -394,10 +397,10 @@ class LaplaceLikelihood:
         self.scale = float(scale)
         self.alpha, self.beta, self.learn = float(alpha), float(beta), learn
 
-    def neg_log(self, f, t):
+    def neg_log(self, f, t, rows=None):
         return torch.sum(torch.abs(_target(t) - f)) / self.scale
 
-    def statistic(self, f, t):
+    def statistic(self, f, t, rows=None):
         return torch.sum(torch.abs(_target(t) - f))
 
     def gibbs(self, stat, n, rng):
@@ -442,10 +445,10 @@ class GaussianLikelihood:
         self.scale = float(scale)
         self.alpha, self.beta, self.learn = float(alpha), float(beta), learn
 
-    def neg_log(self, f, t):
+    def neg_log(self, f, t, rows=None):
         return torch.sum((_target(t) - f)**2) / (2 * self.scale**2)
 
-    def statistic(self, f, t):
+    def statistic(self, f, t, rows=None):
         return torch.sum((_target(t) - f)**2)
 
     def gibbs(self, stat, n, rng):
@@ -470,32 +473,47 @@ class GaussianLikelihood:
 
 class PoissonLikelihood:
     '''
-    p(t | f) = Normal(t; f, v),  v = the KNOWN noise variance of each target,
-    read from column 1 of the targets (for a POWHEG bin, v = w_j * t, the
-    variance of a histogram of events of weight w_j). There is no unknown
-    noise parameter. EXPERIMENTAL: the corresponding CHI2 loss trained poorly.
+    p(t | f) = Normal(t; f, v),  where v is the KNOWN noise variance of each
+    training row (for a POWHEG bin, the variance of a histogram of
+    equal-weight events). There is no unknown noise parameter.
+    EXPERIMENTAL: the corresponding CHI2 loss trained poorly.
+
+    The variances are NOT a second target: they are given here, once, as a
+    tensor with one entry per training row, in the same order as the rows
+    of x and t passed to Posterior, and on the same device.
+
+    Arguments
+    ---------
+    variance : tensor of shape [N], the noise variance of each training row.
     '''
     name = 'poisson'
 
-    def __init__(self):
+    def __init__(self, variance):
+        self.variance = torch.as_tensor(variance).reshape(-1)
         self.scale = 1.0       # not used; kept so all likelihoods look alike
         self.learn = False
 
-    def neg_log(self, f, t):
-        return torch.sum((t[:, 0] - f)**2 / (2 * t[:, 1]))
+    def _var(self, rows, f):
+        # the variances of the rows in this chunk, in double precision
+        v = self.variance if rows is None else self.variance[rows]
+        return v.to(device=f.device, dtype=f.dtype)
 
-    def statistic(self, f, t):
-        return torch.sum((t[:, 0] - f)**2 / t[:, 1])     # chi-squared
+    def neg_log(self, f, t, rows=None):
+        return torch.sum((_target(t) - f)**2 / (2 * self._var(rows, f)))
+
+    def statistic(self, f, t, rows=None):
+        # the chi-squared of these rows
+        return torch.sum((_target(t) - f)**2 / self._var(rows, f))
 
     def gibbs(self, stat, n, rng):
-        return
+        return                  # nothing to sample
 
     def initial_scale(self, stat, n):
         return 1.0
 
     def noise(self, f, generator=None):
         raise NotImplementedError('PoissonLikelihood: predictive noise needs '
-                                  'the variance at each point')
+                                  'the variance at each new point')
 
     def state(self):
         return {'scale': self.scale}
@@ -537,10 +555,11 @@ class Posterior:
         model.eval()   # no dropout etc. (ParameterView has checked anyway)
 
     def _chunks(self):
-        # yield (x, t) for consecutive blocks of rows
+        # yield (x, t, rows) for consecutive blocks of rows, where rows is
+        # the slice of the training data that the block covers
         for start in range(0, self.N, self.chunk_size):
-            end = start + self.chunk_size
-            yield self.x[start:end], self.t[start:end]
+            rows = slice(start, start + self.chunk_size)
+            yield self.x[rows], self.t[rows], rows
 
     def U_and_grad(self, w):
         '''
@@ -553,19 +572,19 @@ class Posterior:
         self.view.set(w)          # put w into the model
         self.view.zero_grad()     # forget gradients of the previous call
         U_lik, stat = 0.0, 0.0
-        for xc, tc in self._chunks():
+        for xc, tc, rows in self._chunks():
             # model(xc) has shape [chunk] or [chunk, 1]; reshape(-1) makes
             # it [chunk]. .double() converts to 64-bit floats, so that the sum
             # over many rows keeps enough digits for the accept/reject step.
             f = self.model(xc).reshape(-1).double()
-            nll = self.likelihood.neg_log(f, tc.double())
+            nll = self.likelihood.neg_log(f, tc.double(), rows)
             # backward() computes d(nll)/d(parameter) for every parameter
             # and ADDS it to p.grad; over all chunks this gives the gradient
             # of the full sum.
             nll.backward()
             U_lik += float(nll.detach())
             stat  += float(self.likelihood.statistic(f.detach(),
-                                                     tc.double()))
+                                                     tc.double(), rows))
         U_prior, grad_prior = self.prior.neg_log(w)
         grad = self.view.grad() + grad_prior
         return U_lik + U_prior, grad, stat
@@ -577,9 +596,10 @@ class Posterior:
         self.view.set(w)
         U_lik = 0.0
         with torch.no_grad():
-            for xc, tc in self._chunks():
+            for xc, tc, rows in self._chunks():
                 f = self.model(xc).reshape(-1).double()
-                U_lik += float(self.likelihood.neg_log(f, tc.double()))
+                U_lik += float(self.likelihood.neg_log(f, tc.double(),
+                                                       rows))
         return U_lik + self.prior.neg_log(w)[0]
 
     def time_gradient(self, w, repeats=3):
