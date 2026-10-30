@@ -30,6 +30,8 @@ Each notebook in `code/` can be run on Google Colab without installing anything:
 | `heft_train.ipynb` | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/hbprosper/dihiggs/blob/main/code/heft_train.ipynb) |
 | `heft_test.ipynb` | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/hbprosper/dihiggs/blob/main/code/heft_test.ipynb) |
 | `heft_export.ipynb` | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/hbprosper/dihiggs/blob/main/code/heft_export.ipynb) |
+| `hmc_toy.ipynb` | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/hbprosper/dihiggs/blob/main/code/hmc_toy.ipynb) |
+| `heft_train_bnn.ipynb` | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/hbprosper/dihiggs/blob/main/code/heft_train_bnn.ipynb) |
 
 The first code cell of each notebook clones this repository, installs the `dihiggs` package (which also installs `drwho`), and makes `dihiggs/code` the working directory; outside Colab it does nothing. A few points to note:
 
@@ -48,6 +50,9 @@ The first code cell of each notebook clones this repository, installs the `dihig
 Both read the trained parameters from a plain-text file, `heftnet_weights.txt`, take the di-Higgs mass in GeV, and return the cross section in pb per 15 GeV bin. Each folder has a README, an example program, and `reference.txt`, values from the PyTorch model that the example program uses to check the copy. The converter validates both copies against the PyTorch model before finishing.
 
 The model itself is described in [`docs/dihiggs_model.pdf`](docs/dihiggs_model.pdf).
+
+## Bayesian neural network
+`dihiggs/hmc.py` samples the parameters of a model from their posterior density with Hamiltonian Monte Carlo, following Radford Neal, and computes posterior means, standard deviations and credible intervals of its output. It works with any deterministic PyTorch model and imports nothing from `dihiggs`. `code/hmc_toy.ipynb` checks it on problems with known answers (about a minute on a CPU); `code/heft_train_bnn.ipynb` applies it to `HEFTNet` (use a GPU). The design is described in [`docs/bnn/bnn_plan.pdf`](docs/bnn/bnn_plan.pdf).
 
 ##  Installation
 The simplest way to install these Python modules is first to install a software environment system. 

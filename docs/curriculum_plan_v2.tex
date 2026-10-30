@@ -1,0 +1,307 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{mathpazo}
+\usepackage{amsmath,amssymb}
+\usepackage{microtype}
+\usepackage{booktabs}
+\usepackage[dvipsnames]{xcolor}
+\usepackage[most]{tcolorbox}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\hypersetup{colorlinks=true,linkcolor=MidnightBlue,urlcolor=MidnightBlue}
+\urlstyle{tt}
+\newcommand{\file}[1]{\nolinkurl{#1}}
+\newcommand{\code}[1]{\texttt{#1}}
+\newcommand{\mhh}{m_{hh}}
+\newcommand{\sbin}{\sigma_\text{bin}}
+\newcommand{\stot}{\sigma_\text{tot}}
+
+\definecolor{trainable}{HTML}{1B6CA8}
+\definecolor{physics}{HTML}{2E933C}
+\definecolor{warn}{HTML}{C0392B}
+
+\newtcolorbox{keyidea}[1][]{enhanced,breakable,colback=physics!6,colframe=physics!70!black,
+  fonttitle=\bfseries,title={#1},boxrule=0.6pt,arc=2pt,left=6pt,right=6pt}
+\newtcolorbox{aside}[1][]{enhanced,breakable,colback=trainable!5,colframe=trainable!70!black,
+  fonttitle=\bfseries,title={#1},boxrule=0.6pt,arc=2pt,left=6pt,right=6pt}
+\newtcolorbox{watch}[1][]{enhanced,breakable,colback=warn!5,colframe=warn!70!black,
+  fonttitle=\bfseries,title={#1},boxrule=0.6pt,arc=2pt,left=6pt,right=6pt}
+\newtcolorbox{assume}[1][]{enhanced,breakable,colback=gray!5,colframe=gray!50!black,
+  fonttitle=\bfseries,title={#1},boxrule=0.6pt,arc=2pt,left=6pt,right=6pt}
+
+\setlist{itemsep=2pt,topsep=3pt}
+
+\title{\textbf{Redesigning \texttt{heft\_train\_curriculum.ipynb}:}\\
+\textbf{revised plan}\\[4pt]
+\large For approval before the notebook is changed\\
+\normalsize Supersedes \texttt{docs/curriculum\_plan.pdf} (October 29, 2026)}
+\date{October 29, 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+\noindent
+This revised plan expands the original three curriculum fixes to include two
+additional changes that were decided after the initial plan was written. First,
+the custom loss functions (\code{CHI2} and the custom \code{L1Loss}) are
+removed in favour of PyTorch's built-in \code{nn.L1Loss}, which has proved
+more stable and gives better results. Second, \code{noise\_var} is removed as
+a training target: because the data obey Poisson statistics with a known
+scale, the variance is analytically determined by the cross section itself and
+need not be learned. Together with the three curriculum fixes --- corrected
+sort direction, a new \code{DIFFICULTY} switch, and a new \code{PACING} switch
+--- the notebook is updated in five targeted places. No cell is modified until
+you approve.
+\end{abstract}
+
+% ===========================================================================
+\section{Changes 1--2: loss function and training target}
+
+\subsection{Revert to \texttt{nn.L1Loss}}
+
+The current notebook offers two loss options, selected by a \code{LOSS}
+switch: a custom \code{CHI2} (Pearson $\chi^2$) loss and a custom
+\code{L1Loss} with a noise floor. Testing showed that results with the custom
+\code{L1Loss} are worse than with the earlier, simpler approach. The fix is to
+remove both custom loss classes and replace them with PyTorch's built-in
+\code{nn.L1Loss}, which computes the mean absolute error (MAE) between
+the model's prediction $\hat{f}_k$ and the true bin cross section $\sigma_k$:
+\[
+  \mathcal{L} = \frac{1}{K} \sum_{k=1}^{K} \bigl|\hat{f}_k - \sigma_k\bigr|.
+\]
+This treats every bin equally, with no weighting by cross section or noise
+estimate. It is numerically stable and requires no auxiliary inputs.
+
+The \code{LOSS} switch is retained in the switches cell for documentary
+clarity, but it now simply instantiates \code{nn.L1Loss()} with no branching.
+The custom loss class definitions are removed entirely. A comment in the
+switches cell explains why a custom loss was tried and why the built-in is
+preferred.
+
+\subsection{Remove \code{noise\_var} from the training target}
+
+The target array currently has two columns,
+\[
+  Y = \begin{bmatrix} \sigma_k & \hat{v}_k \end{bmatrix},
+\]
+where $\hat{v}_k$ is a noise-variance estimate included for use in the CHI2
+loss denominator. With that loss gone, the second column serves no purpose in
+training. The new target array is simply
+\[
+  Y = \begin{bmatrix} \sigma_k \end{bmatrix}.
+\]
+
+\begin{aside}[Why \texttt{noise\_var} is not needed as a target]
+The data are scaled Poisson counts. Each spectrum $j$ consists of $N_\text{ev}
+= 40\,000$ events with equal weight $w_j$; bin $k$ receives $n_k$ events, so
+\[
+  \sigma_k = w_j\,n_k, \qquad
+  \operatorname{Var}(\sigma_k) = w_j^2\,n_k = w_j\,\sigma_k.
+\]
+The variance is therefore determined exactly by the cross section itself, up to
+the per-spectrum weight $w_j$. There is no free parameter to learn: any time
+a variance estimate is needed (for diagnostics, for a future weighted loss, or
+for uncertainty propagation), it can be computed analytically as $w_j\,
+\hat{\sigma}_k$ from the model's own prediction $\hat{\sigma}_k$.
+\end{aside}
+
+The \code{noise\_var} column is \emph{kept in the dataframe}; removing it from
+training does not require removing it from the data file. This preserves it
+for diagnostic use.
+
+\paragraph{Cells that change.} Two cells are affected by these two changes.
+
+\begin{enumerate}
+  \item \textit{Switches cell:} \code{LOSS} is set to \code{'L1'} and the
+    custom loss class definitions are removed. A one-line comment explains what
+    was tried and why the built-in is used instead.
+  \item \textit{Y-array construction cell:} the line
+    \begin{quote}\small\ttfamily
+      Y = df[[NN.TARGET, 'noise\_var']].to\_numpy(dtype=np.float32)
+    \end{quote}
+    becomes
+    \begin{quote}\small\ttfamily
+      Y = df[[NN.TARGET]].to\_numpy(dtype=np.float32)
+    \end{quote}
+    and the training loop is updated to pass \code{y.squeeze()} (or
+    \code{y[:,\,0]}) to the loss function rather than unpacking two columns.
+\end{enumerate}
+
+% ===========================================================================
+\section{Changes 3--5: the curriculum}
+
+These three changes are unchanged from the original plan. They are reproduced
+here for completeness.
+
+\subsection*{Background: easy means large cross section}
+
+Bengio et al.\ (2009) showed that training on examples ordered from easy to
+hard often converges faster and to a better minimum. For \textsc{HEFTNet}, a
+training row is one bin $(x_k,\,\theta,\,\sigma_k)$. The SNR of that bin is
+\[
+  \mathrm{SNR}_k = \sqrt{\frac{\sigma_k}{w_j}},
+\]
+so a large $\sigma_k$ means a reliable gradient and a small $\sigma_k$ means
+a noisy one. \textbf{Easy rows are those with the largest cross section, not
+the smallest.}
+
+\subsection{Fix the sort direction (Change 3)}
+
+Cell~19 currently sorts in ascending order:
+\begin{quote}\small\ttfamily
+order = np.argsort(key, kind='stable')
+\end{quote}
+This puts the hardest (smallest) examples first. The fix is:
+\begin{quote}\small\ttfamily
+order = np.argsort(score, kind='stable')[::-1]
+\end{quote}
+The variable is renamed \code{score} for clarity, and a comment explains why
+descending order is correct.
+
+\subsection{Replace \texttt{CURRICULUM\_BY} with \texttt{DIFFICULTY} (Change 4)}
+
+The existing switch conflates the difficulty criterion (what makes an example
+easy) with the level at which it is applied (per-bin or per-spectrum). These
+are split into a single, clearly named switch:
+
+\begin{center}
+\small
+\begin{tabular}{lll}
+\toprule
+\code{DIFFICULTY} value & sort key & granularity \\
+\midrule
+\code{'bin\_sigma'} & $\sigma_k$ of that bin & per bin \\
+\code{'spectrum\_sigma'} & $\sigma_\text{tot} = \sum_k \sigma_k$ of the parent
+  spectrum & per spectrum \\
+\code{'spectrum\_snr'} & $\sigma_\text{tot} / \sqrt{w_j}$ & per spectrum \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The \code{'spectrum\_snr'} option requires the per-spectrum event weight $w_j$.
+This is not in the current training file; the option is included in the switch
+for future use but raises \code{NotImplementedError} if selected, with a
+comment explaining what to add.
+
+\subsection{Add \texttt{PACING} switch and log ramp (Change 5)}
+
+A new \code{PACING} switch controls the shape of the fraction ramp:
+
+\begin{itemize}
+  \item \code{'linear'}: $f(i) = \min\bigl(1,\; f_0 + (1-f_0)\,i/i_\text{ramp}\bigr)$.
+    This is the current behaviour.
+  \item \code{'log'}: $f(i) = \min\bigl(1,\; f_0^{\,1 - i/i_\text{ramp}}\bigr)$.
+    At $i=0$ this gives $f_0$; at $i = i_\text{ramp}$ it gives 1. The growth
+    is slow at first and accelerates, spending more iterations on the easiest
+    examples before the ramp opens up.
+\end{itemize}
+
+The \code{CurriculumLoader.fraction} method is updated with an \code{if/else}
+block for the two cases, and the constructor takes \code{pacing} as an
+argument. The docstring explains both shapes and why the sort order matters.
+
+The \code{DIRNAME} string is updated from \code{\_curriculum\_bin} /
+\code{\_curriculum\_spectrum} to \code{\_difficulty\_<value>\_pacing\_<value>}
+so that run folders are self-describing.
+
+% ===========================================================================
+\section{Summary of all five changes}
+
+\begin{center}
+\small
+\begin{tabular}{cllll}
+\toprule
+\# & cell & what changes & replaces & status \\
+\midrule
+1 & Switches & remove custom loss classes; use \code{nn.L1Loss} &
+  custom \code{CHI2} / \code{L1Loss} & new \\
+2 & Y-array & drop \code{'noise\_var'} column from \code{Y} &
+  two-column target & new \\
+3 & Sorting & add \code{[::-1]} for descending order &
+  ascending sort & from v1 \\
+4 & Switches & \code{DIFFICULTY} replaces \code{CURRICULUM\_BY} &
+  \code{CURRICULUM\_BY} & from v1 \\
+5 & \code{CurriculumLoader} & add \code{PACING} and log ramp &
+  linear only & from v1 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+% ===========================================================================
+\section{Experiments to run after the changes}
+
+Four short runs (3$\times$20k iterations, seeded, \code{nn.L1Loss}):
+
+\begin{center}
+\small
+\begin{tabular}{llll}
+\toprule
+run & curriculum & \code{DIFFICULTY} & \code{PACING} \\
+\midrule
+baseline & no & --- & --- \\
+A & yes & \code{'bin\_sigma'} & \code{'linear'} \\
+B & yes & \code{'bin\_sigma'} & \code{'log'} \\
+C & yes & \code{'spectrum\_sigma'} & \code{'log'} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Three seeds per run give enough spread to assess significance. The baseline
+run also uses \code{nn.L1Loss}, so the comparison is clean. Once a best
+curriculum setting is identified, a full 200k-iteration run follows.
+
+\begin{watch}[Previous curriculum results are no longer comparable]
+The curriculum runs recorded in the report used the wrong sort direction
+\emph{and} a custom loss function. They are not a valid baseline for the new
+experiments. All comparisons should be made against the freshly seeded
+\code{nn.L1Loss} baseline above.
+\end{watch}
+
+% ===========================================================================
+\section{What counts as success}
+
+A curriculum is worth keeping if, compared to the plain baseline with the same
+seeds and same number of iterations, it achieves a statistically meaningful
+improvement on the 1\,000 holdout spectra: a lower median $\chi^2/N$
+(evaluated \emph{offline}, not used for training) by more than the
+run-to-run spread, and/or a lower fraction of spectra with $\chi^2/N > 2$.
+If neither criterion is met, the plain \code{nn.L1Loss} training is the
+default.
+
+% ===========================================================================
+\section{Changes not made by this plan}
+
+\begin{itemize}
+  \item \code{DIFFICULTY = 'spectrum\_snr'} is stubbed out (\code{NotImplementedError});
+    it needs the per-spectrum event weight $w_j$ added to the training file.
+  \item Seeding (\code{torch.manual\_seed} and \code{numpy.random.seed}) is a
+    separate one-cell change, to be applied to both \file{heft\_train.ipynb}
+    and \file{heft\_train\_curriculum.ipynb} together.
+  \item Nothing changes in \file{heft\_test.ipynb}, \file{heft\_checks.ipynb},
+    or \file{heft\_export.ipynb}.
+  \item The \code{noise\_var} column is kept in the dataframe and data files;
+    only its inclusion in the training target array is removed.
+\end{itemize}
+
+% ===========================================================================
+\begin{keyidea}[Decisions for you before I proceed]
+\begin{enumerate}
+  \item \textbf{Loss function.} Confirmed: use \code{nn.L1Loss} and remove
+    the custom loss classes. Any objection?
+  \item \textbf{Noise-var target.} Confirmed: remove \code{'noise\_var'} from
+    \code{Y}. Keep the column in the dataframe. Any objection?
+  \item \textbf{Sort direction.} Easy $=$ large cross section $=$ descending
+    sort. Any objection?
+  \item \textbf{Difficulty options.} \code{'bin\_sigma'},
+    \code{'spectrum\_sigma'}, \code{'spectrum\_snr'} (stubbed). Any additions
+    or changes?
+  \item \textbf{DIRNAME naming.}
+    \file{runs/L1Loss\_difficulty\_bin\_sigma\_pacing\_log}. Acceptable, or
+    should we abbreviate?
+  \item \textbf{Seeding.} Same time as these changes, or separately
+    afterwards?
+\end{enumerate}
+\end{keyidea}
+
+\end{document}
