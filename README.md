@@ -32,6 +32,7 @@ Each notebook in `code/` can be run on Google Colab without installing anything:
 | `heft_export.ipynb` | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/hbprosper/dihiggs/blob/main/code/heft_export.ipynb) |
 | `hmc_toy.ipynb` | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/hbprosper/dihiggs/blob/main/code/hmc_toy.ipynb) |
 | `heft_train_bnn.ipynb` | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/hbprosper/dihiggs/blob/main/code/heft_train_bnn.ipynb) |
+| `heft_train_ensemble.ipynb` | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/hbprosper/dihiggs/blob/main/code/heft_train_ensemble.ipynb) |
 
 The first code cell of each notebook clones this repository, installs the `dihiggs` package (which also installs `drwho`), and makes `dihiggs/code` the working directory; outside Colab it does nothing. A few points to note:
 
@@ -53,6 +54,9 @@ The model itself is described in [`docs/dihiggs_model.pdf`](docs/dihiggs_model.p
 
 ## Bayesian neural network
 `dihiggs/hmc.py` samples the parameters of a model from their posterior density with Hamiltonian Monte Carlo, following Radford Neal, and computes posterior means, standard deviations and credible intervals of its output. It works with any deterministic PyTorch model and imports nothing from `dihiggs`. `code/hmc_toy.ipynb` checks it on problems with known answers (about a minute on a CPU); `code/heft_train_bnn.ipynb` applies it to `HEFTNet` (use a GPU). The design is described in [`docs/bnn/bnn_plan.pdf`](docs/bnn/bnn_plan.pdf).
+
+## Bootstrap ensemble
+`code/heft_train_ensemble.ipynb` trains an ensemble of `HEFTNet` models, either with different random seeds (`MODE = 'seeds'`) or, in addition, on bootstrap resamples of the training rows (`MODE = 'bootstrap'`), and tests on the holdout spectra whether the spread of the members accounts for the model's actual errors. `dihiggs/ensemble.py` provides the `Ensemble` class, with the same methods as `hmc.BNN`. The plan, including a discussion of the choice of reference ensemble, is [`docs/ensemble/ensemble_plan.pdf`](docs/ensemble/ensemble_plan.pdf).
 
 ##  Installation
 The simplest way to install these Python modules is first to install a software environment system. 
