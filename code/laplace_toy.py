@@ -9,7 +9,7 @@
 #     python laplace_toy.py
 # from the code folder.
 #
-# Harrison B. Prosper and Claude, Oct 31 2026
+# P. Bhat, N. De Filippis, K.F. Johnson, H.B. Prosper, R. Starnes, Oct 31 2026
 # ----------------------------------------------------------------------------
 import numpy as np
 import torch

@@ -28,7 +28,7 @@
 #                               dropped from the training file
 #   poisson_variance(df)        q * t for every row
 #
-# Harrison B. Prosper and Claude
+# P. Bhat, N. De Filippis, K.F. Johnson, H.B. Prosper, R. Starnes
 # Created: Sat Oct 31 2026
 # ----------------------------------------------------------------------------
 import warnings

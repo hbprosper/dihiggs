@@ -48,7 +48,7 @@
 #                                   MacKay's prior updates, evidence, samples
 #   mixture(mus, vs, weights)       combine the predictions of several
 #
-# Harrison B. Prosper and Claude
+# P. Bhat, N. De Filippis, K.F. Johnson, H.B. Prosper, R. Starnes
 # Created: Sat Oct 31 2026
 # ----------------------------------------------------------------------------
 import math

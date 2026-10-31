@@ -29,7 +29,7 @@
 # This module deliberately imports nothing from dihiggs, so that it can be
 # moved to drwho unchanged.
 #
-# Harrison B. Prosper and Claude
+# P. Bhat, N. De Filippis, K.F. Johnson, H.B. Prosper, R. Starnes
 # Created: Thu Oct 29 2026
 # ----------------------------------------------------------------------------
 import os, csv, glob, math, time

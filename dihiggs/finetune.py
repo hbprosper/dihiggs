@@ -18,7 +18,7 @@
 # batch are chosen by their row numbers (indices), which pick out inputs,
 # targets and variances together.
 #
-# Harrison B. Prosper and Claude
+# P. Bhat, N. De Filippis, K.F. Johnson, H.B. Prosper, R. Starnes
 # Created: Sat Oct 31 2026
 # ----------------------------------------------------------------------------
 import os, math, time

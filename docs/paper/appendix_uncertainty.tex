@@ -1,0 +1,313 @@
+% ============================================================================
+% Draft appendix: uncertainty of the network model.
+% Written to be \input into the JHEP paper (jheppub), after \appendix.
+% Comments beginning with "% TODO" mark decisions or numbers to revisit.
+% Figures: fig_app_accuracy.pdf, fig_app_calibration.pdf,
+%          fig_app_decomposition.pdf. References: appendix_refs.bib.
+% Draft of 1 November 2026.
+% ============================================================================
+\section{Uncertainty of the network model}
+\label{app:uncertainty}
+
+The differential cross section is modelled as
+$\sigma(m_{hh},\theta) = \sum_{i=1}^{23} c_i(\theta)\, a_i(m_{hh})$, where the
+monomials $c_i(\theta)$ in the HEFT parameters
+$\theta = (\kappa_\lambda, c_t, c_{tt}, c_{ggh}, c_{gghh})$ are known
+exactly~\cite{Alasfar:2023xpc} and the 23 functions $a_i(m_{hh})$ are represented by a
+neural network (section~\ref{sec:model}). % TODO: label of the main-text section
+In this appendix we describe how the network is trained, how its uncertainty is
+estimated, and how both are validated on POWHEG spectra not used in the training.
+
+\subsection{Data and noise model}
+\label{app:data}
+
+The training sample consists of 3,989 POWHEG spectra at 13~TeV, each at a different point
+$\theta$, binned in 80 bins of 15~GeV between $m_{hh} = 255$ and 1455~GeV. Each bin of
+each spectrum is one training row, $(m_{hh}, \theta) \mapsto \sigma$. Of the 317,306 rows,
+274,152 are used for training, 5,078 for validation (the choice of the saved parameters),
+and 38,076 are not used in the training. A further 1,000 spectra, generated in the same
+way, are held out completely and serve as the test sample.
+
+Every spectrum is, to a good approximation, a histogram of $N_\text{eff}$ events of equal
+weight. We estimate $N_\text{eff}$ from the bin-to-bin fluctuations of the training
+spectra in the smooth region $m_{hh} > 570$~GeV, comparing each bin with the average of its
+two neighbours, and find $N_\text{eff} \simeq 3.8 \times 10^4$. The noise variance of bin
+$k$ of a spectrum with total cross section $\sigma_\text{tot}$ is then taken to be
+\begin{equation}
+  \sigma_k^2 = \Big(t_k + \frac{\sigma_\text{tot}}{N_\text{eff}}\Big)
+               \frac{\sigma_\text{tot}}{N_\text{eff}} ,
+  \label{eq:app:noise}
+\end{equation}
+where $t_k$ is the POWHEG cross section in the bin; the second term, the variance of one
+additional event, prevents bins with very few events from acquiring unphysically small
+variances. For the test sample we use $\sigma_k^2 = t_k \sigma_\text{tot}/N_\text{eff}$.
+% TODO: the per-spectrum event weights can be recovered exactly from the quantization
+% of the spectra; a later version could use them instead of N_eff.
+
+\subsection{Training}
+\label{app:training}
+
+Each network is trained in two stages.
+
+\paragraph{Stage 1.} The network is trained by minimising the mean absolute deviation (L1
+loss) between prediction and POWHEG, with the Adam optimiser~\cite{Kingma:2014vow},
+mini-batches of 2,048 rows, $2 \times 10^5$ iterations and a learning rate of
+$2 \times 10^{-3}$ halved three times at equal intervals. The parameters with the lowest
+validation loss are kept. The L1 loss treats an absolute error equally in every bin, so
+the fit is dominated by the largest cross sections, and the region just above threshold,
+where the cross section is two orders of magnitude below its peak, is modelled less well
+(table~\ref{tab:app:accuracy}).
+
+\paragraph{Stage 2.} The network is then fine-tuned with the Huber loss~\cite{Huber:1964}
+of the pulls $r_k = (f_k - t_k)/\sigma_k$, where $f_k$ is the network prediction,
+\begin{equation}
+  \ell_\delta(r) =
+  \begin{cases}
+    \tfrac12 r^2 , & |r| \le \delta , \\[2pt]
+    \delta \big(|r| - \tfrac12\delta\big) , & |r| > \delta ,
+  \end{cases}
+  \label{eq:app:huber}
+\end{equation}
+with $\delta = 2$. For bins within two standard deviations of POWHEG this is
+$\chi^2/2$, so each bin is weighted by its precision; bins further away contribute
+linearly, which limits the influence of the few badly modelled bins and of spectra whose
+noise is underestimated. The fine-tune uses gradients computed on all training rows at
+every step (``full batch''), Adam with a learning rate of $10^{-4}$ halved three times, and
+$10^4$ steps; the parameters with the lowest validation loss (of the same Huber loss) are
+kept. Starting from the stage-1 solution is essential: trained from random weights with
+mini-batches, a $\chi^2$ loss converges poorly, presumably because the weights
+$1/\sigma_k^2$ span many orders of magnitude. On a single network, the results depend
+little on $\delta$: for $\delta = 1$, 2, 3 and $\infty$ (pure $\chi^2$), the mean $\chi^2$
+per bin between 255 and 555~GeV is 1.66, 1.63, 1.63 and 1.59, against 8.44 after stage 1.
+% TODO: decide whether the paper presents the fine-tune (more accurate) or stage 1 only
+% (simpler; calibrated without a model-error term, but less accurate near threshold).
+
+\subsection{Ensembles}
+\label{app:ensembles}
+
+We regard the training procedure as an estimator $\hat f(\boldsymbol{x}; D, s)$ of the
+cross section at $\boldsymbol{x} = (m_{hh}, \theta)$, which depends on the training sample
+$D$ and on a random seed $s$ that fixes the initial weights and the order of the
+mini-batches. Its standard deviation at fixed $\boldsymbol{x}$ is the standard error of the
+network prediction. We estimate it with two ensembles of $M = 20$ networks each:
+\begin{itemize}
+  \item a \emph{seeds} ensemble: the same training rows, seeds $s = 42, \ldots, 61$;
+  \item a \emph{bootstrap} ensemble~\cite{Efron:1979,Efron:1993}: member $m$ is trained,
+    with seed $42 + m$, on 274,152 rows drawn with replacement from the training rows
+    (on average 63\% distinct).
+\end{itemize}
+The ensemble mean $\bar f$ is the prediction, and the standard deviation $s$ of the members
+its uncertainty; with $M = 20$, $s$ is itself uncertain by about 16\%. The bootstrap
+treats the training rows as independent draws from a population of rows and estimates the
+variability of the result under a repetition of the whole procedure with a new sample of
+the same size. This is one of several defensible reference ensembles: one could instead
+resample whole spectra (new points $\theta$) or regenerate the POWHEG events at fixed
+$\theta$; the choice is not dictated by the data~\cite{Freedman:1981,Davison:1997}.
+% TODO: optional sentence on the reference-class problem (Venn, Fisher, Cox 1958).
+Because member $m$ uses the same seed in both ensembles, the law of total variance,
+\begin{equation}
+  \operatorname{Var}_{D,s}[\hat f] =
+  \operatorname{E}_D\big[\operatorname{Var}_s[\hat f \mid D]\big]
+  + \operatorname{Var}_D\big[\operatorname{E}_s[\hat f \mid D]\big] ,
+  \label{eq:app:totvar}
+\end{equation}
+separates the bootstrap variance (left) into an optimisation term, estimated by the seeds
+ensemble, and a data term, their difference. Ensembles of independently trained networks
+are known to capture the variability between equally good solutions (``deep
+ensembles'')~\cite{Lakshminarayanan:2016,Wilson:2020}.
+
+\subsection{Bayesian cross-check}
+\label{app:bnn}
+
+As a cross-check we sampled the posterior density of the 3,944 network parameters
+following Neal~\cite{Neal:1996}, with Hamiltonian Monte Carlo~\cite{Duane:1987,Neal:2011},
+using a hierarchical Gaussian prior with one Gibbs-sampled precision per parameter tensor
+and a Gaussian likelihood with the known variances~(\ref{eq:app:noise}). The step size and
+a diagonal mass matrix were adapted during a warm-up of $10^3$ iterations~\cite{Hoffman:2014},
+after which $10^3$ samples were drawn with 800 leapfrog steps per trajectory, starting from
+the stage-1 network. The effective sample size of the predictions at the monitored points
+is about 135. The posterior mean is close in accuracy to the fine-tuned ensemble
+(table~\ref{tab:app:accuracy}) and differs from the ensemble mean by a median of 1.1
+ensemble standard deviations. The posterior standard deviation, however, is only 0.5\% of
+the POWHEG noise: with $2.7 \times 10^5$ training rows the parameters of a single network
+are tightly constrained, and the posterior describes neither the variability between
+equally good networks, which a single Markov chain does not explore, nor the model's own
+error. We therefore do not use it as the uncertainty.
+
+\subsection{Validation on the test spectra}
+\label{app:validation}
+
+On the 1,000 test spectra we compute, for every bin, the $\chi^2$ contribution
+$(t_k - \bar f_k)^2/\sigma_k^2$ and the pull
+\begin{equation}
+  z_k = \frac{t_k - \bar f_k}{\sqrt{\sigma_k^2 + s_k^2}} .
+  \label{eq:app:pull}
+\end{equation}
+If $s_k$ accounts for the difference between the network and the true cross section, $z$
+has unit standard deviation. Table~\ref{tab:app:accuracy} and figure~\ref{fig:app:accuracy}
+show the accuracy, table~\ref{tab:app:calibration} and figure~\ref{fig:app:calibration} the
+calibration, and figure~\ref{fig:app:decomposition} the decomposition~(\ref{eq:app:totvar}).
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{lccccc}
+\hline
+ & median $\chi^2/N$ & $\chi^2/N > 5$ & \multicolumn{2}{c}{$\langle\chi^2\rangle$ per bin} & negative \\
+ & & & 255--555 GeV & $> 555$ GeV & predictions \\
+\hline
+single network, stage 1 & 1.171 & 4.9\% & 8.44 & 1.20 & 0.18\% \\
+stage-1 ensemble, seeds & 1.127 & 2.3\% & 4.08 & 1.17 & 0.06\% \\
+stage-1 ensemble, bootstrap & 1.118 & 2.2\% & 4.05 & 1.14 & 0.06\% \\
+fine-tuned ensemble, seeds & 1.068 & 0.4\% & 1.62 & 1.10 & 0.004\% \\
+fine-tuned ensemble, bootstrap & 1.066 & 0.4\% & 1.62 & 1.10 & 0.004\% \\
+Bayesian network (posterior mean) & 1.099 & 1.2\% & 1.89 & 1.12 & 0.03\% \\
+\hline
+\end{tabular}
+\caption{Accuracy on the 1,000 test spectra. $\chi^2/N$ is computed per spectrum; the
+columns give its median and the fraction of spectra above 5, and the mean $\chi^2$ per bin
+below and above 555~GeV. For the ensembles, the mean of the 20 members is used.}
+\label{tab:app:accuracy}
+\end{table}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.7\textwidth]{fig_app_accuracy.pdf}
+\caption{Mean $\chi^2$ per bin over the 1,000 test spectra as a function of $m_{hh}$, for a
+single stage-1 network, the stage-1 (seeds) ensemble, the fine-tuned (bootstrap) ensemble
+and the posterior mean of the Bayesian network.}
+\label{fig:app:accuracy}
+\end{figure}
+
+\paragraph{Accuracy.} Averaging over an ensemble improves on a single network, and the
+fine-tune improves substantially on stage 1, above all near threshold, where the mean
+$\chi^2$ per bin falls from 8.4 (single network) and 4.1 (stage-1 ensemble) to 1.6.
+Negative predictions, which are unphysical, become very rare. The fine-tuned members agree
+closely with one another (their $\chi^2$ per bin near threshold ranges from 1.6 to 1.8,
+against 3.6 to 15 for the stage-1 members).
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{lcccccc}
+\hline
+ & \multicolumn{2}{c}{median $s/\sigma_k$} & \multicolumn{3}{c}{standard deviation of $z$} & $|z| < 2$ \\
+ & all & 255--555 GeV & all & 255--555 GeV & $> 555$ GeV & \\
+\hline
+stage-1 ensemble, seeds & 0.157 & 0.25 & 1.024 & 1.018 & 1.026 & 95.0\% \\
+stage-1 ensemble, bootstrap & 0.157 & 0.25 & 1.025 & 1.020 & 1.026 & 95.0\% \\
+fine-tuned ensemble, seeds & 0.051 & 0.075 & 1.076 & 1.170 & 1.042 & 94.2\% \\
+fine-tuned ensemble, bootstrap & 0.056 & 0.091 & 1.069 & 1.145 & 1.042 & 94.2\% \\
+\quad with model error, eq.~(\ref{eq:app:amodel}) $^\dagger$ & 0.32 & 0.47 & 1.003 & 1.024 & 0.995 & 95.6\% \\
+Bayesian network & 0.005 & 0.007 & 1.143 & 1.370 & 1.055 & 93.5\% \\
+\hline
+\end{tabular}
+\caption{Calibration on the test spectra: the uncertainty $s$ in units of the POWHEG noise,
+and the pull~(\ref{eq:app:pull}). For a standard normal pull, $|z| < 2$ holds for 95.4\% of
+bins. $^\dagger$Here the first two columns give the total uncertainty
+$s_{k,\text{tot}}/\sigma_k$ of eq.~(\ref{eq:app:model}), with $a$ determined on training-file
+rows not used in the training (appendix~\ref{app:model}).}
+\label{tab:app:calibration}
+\end{table}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\textwidth]{fig_app_calibration.pdf}
+\caption{Left: standard deviation of the pull~(\ref{eq:app:pull}) on the test spectra as a
+function of $m_{hh}$; the dashed curve includes the model-error
+term~(\ref{eq:app:model}). Right: the model-error coefficient $a$ determined bin by bin on
+the 38,076 training-file rows not used in the training (points), the fit~(\ref{eq:app:amodel})
+with its 68\% band from a bootstrap over spectra (solid), and the two-region estimate
+(dashed).}
+\label{fig:app:calibration}
+\end{figure}
+
+\paragraph{Calibration.} The spread of the stage-1 ensembles matches their errors: the
+pull has unit standard deviation within 2--3\% everywhere. Their members, however,
+disagree strongly near threshold, which is also where their mean is least accurate. The
+fine-tune removes most of that disagreement and most of the error, but the spread shrinks
+by a factor of three, more than the error does: what remains is an error common to all
+members, which no ensemble of identically trained networks can reveal. The pull of the
+fine-tuned ensemble has a standard deviation of 1.15 near threshold and 1.04 above. The
+Bayesian posterior is far too narrow, as explained in appendix~\ref{app:bnn}. The tails of
+the pull distribution are somewhat heavier than Gaussian for all methods: for the
+stage-1 ensembles, 0.56\% of bins have $|z| > 3$, against 0.27\% for a standard normal.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\textwidth]{fig_app_decomposition.pdf}
+\caption{Decomposition~(\ref{eq:app:totvar}) of the ensemble variance, for stage-1 (left)
+and fine-tuned (right) ensembles: total (bootstrap), optimisation (seeds) and their
+difference (data), as the square root of the median over the test spectra of
+$s^2/\sigma_k^2$. Where the seeds variance exceeds the bootstrap variance, which happens
+within the statistical uncertainty of 20-member ensembles, the data term is not shown.}
+\label{fig:app:decomposition}
+\end{figure}
+
+\paragraph{Sources of the spread.} For the stage-1 networks the bootstrap and seeds
+variances are equal within their statistical uncertainty (median ratio 1.05): the spread
+is entirely due to the optimisation, i.e.\ to the different solutions reached from
+different starting points, and resampling the training rows adds nothing measurable. For
+the fine-tuned networks the optimisation term accounts for about 80\% of the variance and
+the data term for about 20\%, corresponding to standard deviations of about 5\% and 2\% of
+the POWHEG noise. With $2.7 \times 10^5$ training rows, the statistical uncertainty due
+to the finite training sample is thus small compared with the POWHEG noise. The means of
+the seeds and bootstrap fine-tuned ensembles agree to 0.2 of their spread.
+
+\subsection{Model-error term}
+\label{app:model}
+
+To account for the error common to all members, we add a model-error term in quadrature,
+\begin{equation}
+  s_{k,\text{tot}}^2 = s_k^2 + a(m_{hh})\, \sigma_k^2 ,
+  \label{eq:app:model}
+\end{equation}
+and replace $s_k^2$ by $s_{k,\text{tot}}^2$ in the pull~(\ref{eq:app:pull}). The coefficient
+is determined on the 38,076 rows of the training file that were used neither for training
+nor for validation, so that the test spectra serve only for validation. For each of the 80
+bins we solve $\langle z^2 \rangle = 1$ for $a$; the results (figure~\ref{fig:app:calibration},
+right) are large just above threshold and roughly constant beyond about 500~GeV, and are
+well described by
+\begin{equation}
+  a(m_{hh}) = a_0\, e^{-(m_{hh} - 255\,\text{GeV})/\lambda} + a_1 ,
+  \qquad a_0 = 0.74, \quad \lambda = 77~\text{GeV}, \quad a_1 = 0.095 ,
+  \label{eq:app:amodel}
+\end{equation}
+fitted by least squares; a bootstrap over the spectra gives uncertainties of 0.28, 35~GeV
+and 0.013 on the three parameters, which are strongly correlated. A cruder estimate with one
+coefficient below and one above 555~GeV gives $a = 0.29 \pm 0.03$ and $0.090 \pm 0.013$.
+The model error is thus about 0.9 of the POWHEG noise in the first bin, 0.5 at 400~GeV and
+0.3 above 600~GeV, several times the spread of the ensemble.
+
+On the 1,000 test spectra, with $a$ from eq.~(\ref{eq:app:amodel}), the pull has a standard
+deviation of 1.003 (1.024 below and 0.995 above 555~GeV), and $|z| < 1$ and $|z| < 2$ hold
+for 69.3\% and 95.6\% of the bins, against 68.3\% and 95.4\% for a standard normal
+(table~\ref{tab:app:calibration}, figure~\ref{fig:app:calibration}). The two-region estimate
+performs almost as well (1.003; 1.018 and 0.998). The same coefficients also calibrate the
+seeds ensemble (1.008).
+
+Two remarks. First, the residuals have heavier tails than a Gaussian: requiring instead that
+the robust standard deviation $1.4826 \times \text{median}|z|$ be one gives $a = 0.13$ below
+555~GeV, half the value obtained from the variance, so near threshold the bulk of the bins is described better
+than the variance suggests, and a few bins are described worse. Second, above 555~GeV the
+term $a_1 \sigma_k^2$ cannot be distinguished from a 10\% underestimate of the POWHEG
+variance, i.e.\ of $1/N_\text{eff}$ in eq.~(\ref{eq:app:noise}); the procedure calibrates the
+total uncertainty but does not tell the two apart.
+% TODO: decide whether to quote the smooth fit or the two-region values in the paper.
+
+\subsection{Summary}
+\label{app:summary}
+
+The cross-section model used in this paper is the mean of an ensemble of 20 networks,
+each trained with an L1 loss and fine-tuned with a Huber loss of the pulls, and its
+uncertainty is the standard deviation of the members combined in quadrature with a
+model-error term of 0.3--0.9 of the POWHEG noise, determined on training-file rows not used
+in the training. On 1,000 independent POWHEG spectra this model reaches a median
+$\chi^2/N$ of 1.07, and its uncertainty is calibrated to within 2.5\% at all $m_{hh}$. The
+uncertainty is dominated by the model-error term; the spread of the ensemble, about 80\% of
+which reflects the variability between equally good networks and 20\% the finite training
+sample, is several times smaller. Both are largest just above threshold. A Bayesian treatment of the network parameters gives a compatible central
+value, but its posterior width is negligible and does not describe the uncertainty of the
+model.
+% TODO: adjust if the paper presents the stage-1 ensemble instead (then no model-error
+% term is needed: its spread alone is calibrated; median chi2/N 1.12, threshold chi2 4.1).

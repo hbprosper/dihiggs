@@ -178,3 +178,7 @@ clutter/
 
 # macOS
 .DS_Store
+
+# Run folders: previous-copy backups and text logs
+code/runs/**/*.previous
+code/runs/**/*.txt
