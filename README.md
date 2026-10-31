@@ -33,6 +33,7 @@ Each notebook in `code/` can be run on Google Colab without installing anything:
 | `hmc_toy.ipynb` | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/hbprosper/dihiggs/blob/main/code/hmc_toy.ipynb) |
 | `heft_train_bnn.ipynb` | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/hbprosper/dihiggs/blob/main/code/heft_train_bnn.ipynb) |
 | `heft_train_ensemble.ipynb` | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/hbprosper/dihiggs/blob/main/code/heft_train_ensemble.ipynb) |
+| `heft_finetune.ipynb` | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/hbprosper/dihiggs/blob/main/code/heft_finetune.ipynb) |
 
 The first code cell of each notebook clones this repository, installs the `dihiggs` package (which also installs `drwho`), and makes `dihiggs/code` the working directory; outside Colab it does nothing. A few points to note:
 
@@ -57,6 +58,9 @@ The model itself is described in [`docs/dihiggs_model.pdf`](docs/dihiggs_model.p
 
 ## Bootstrap ensemble
 `code/heft_train_ensemble.ipynb` trains an ensemble of `HEFTNet` models, either with different random seeds (`MODE = 'seeds'`) or, in addition, on bootstrap resamples of the training rows (`MODE = 'bootstrap'`), and tests on the holdout spectra whether the spread of the members accounts for the model's actual errors. `dihiggs/ensemble.py` provides the `Ensemble` class, with the same methods as `hmc.BNN`. The plan, including a discussion of the choice of reference ensemble, is [`docs/ensemble/ensemble_plan.pdf`](docs/ensemble/ensemble_plan.pdf).
+
+## Huber-pull fine-tune
+`code/heft_finetune.ipynb` fine-tunes a trained L1 model with the Huber loss applied to the pulls, the residuals in units of the POWHEG noise of each bin, using full-batch gradients, and compares the results on the holdout spectra. `dihiggs/finetune.py` holds the noise model, the loss and the fine-tune. The plan is [`docs/huber/huber_plan.pdf`](docs/huber/huber_plan.pdf).
 
 ##  Installation
 The simplest way to install these Python modules is first to install a software environment system. 

@@ -1,0 +1,276 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{mathpazo}
+\usepackage{amsmath,amssymb}
+\usepackage{microtype}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage[dvipsnames]{xcolor}
+\usepackage{tikz}
+\usetikzlibrary{positioning,arrows.meta,calc,fit,backgrounds}
+\usepackage[most]{tcolorbox}
+\usepackage{enumitem}
+\usepackage{listings}
+\usepackage[font=small,labelfont=bf]{caption}
+\usepackage{hyperref}
+\hypersetup{colorlinks=true,linkcolor=MidnightBlue,citecolor=MidnightBlue,urlcolor=MidnightBlue}
+\usepackage{cleveref}
+\urlstyle{tt}
+\def\UrlBreaks{\do\_\do/\do.}
+\newcommand{\file}[1]{\nolinkurl{#1}}
+\newcommand{\code}[1]{\texttt{#1}}
+\newcommand{\mhh}{m_{hh}}
+\newcommand{\bw}{\boldsymbol{\omega}}
+\newcommand{\bp}{\boldsymbol{p}}
+\newcommand{\bx}{\boldsymbol{x}}
+\newcommand{\data}{\mathcal{D}}
+
+\definecolor{trainable}{HTML}{1B6CA8}
+\definecolor{physics}{HTML}{2E933C}
+\definecolor{datac}{HTML}{7B4EA3}
+\definecolor{warn}{HTML}{C0392B}
+
+\newtcolorbox{keyidea}[1][]{enhanced,breakable,colback=physics!6,colframe=physics!70!black,
+  fonttitle=\bfseries,title={#1},boxrule=0.6pt,arc=2pt,left=6pt,right=6pt}
+\newtcolorbox{aside}[1][]{enhanced,breakable,colback=trainable!5,colframe=trainable!70!black,
+  fonttitle=\bfseries,title={#1},boxrule=0.6pt,arc=2pt,left=6pt,right=6pt}
+\newtcolorbox{assume}[1][]{enhanced,breakable,colback=datac!5,colframe=datac!70!black,
+  fonttitle=\bfseries,title={#1},boxrule=0.6pt,arc=2pt,left=6pt,right=6pt}
+\newtcolorbox{watch}[1][]{enhanced,breakable,colback=warn!5,colframe=warn!70!black,
+  fonttitle=\bfseries,title={#1},boxrule=0.6pt,arc=2pt,left=6pt,right=6pt}
+\setlist{itemsep=2pt,topsep=3pt}
+\setlength{\emergencystretch}{3em}
+
+\lstset{language=bash, basicstyle=\ttfamily\small, columns=fullflexible,
+  keepspaces=true, commentstyle=\color{physics!70!black}\itshape,
+  keywordstyle=\color{trainable!90!black}\bfseries, stringstyle=\color{datac},
+  showstringspaces=false, frame=single, rulecolor=\color{gray!40},
+  backgroundcolor=\color{gray!3}, xleftmargin=4pt, xrightmargin=4pt,
+  aboveskip=6pt, belowskip=6pt}
+\lstdefinestyle{sh}{language=bash, keywordstyle=\color{black}, commentstyle=\color{black}}
+
+\title{\textbf{Running the \texttt{dihiggs} notebooks on the RTX 5090}\\[4pt]
+\large A short manual: long runs that survive a broken connection}
+\date{October 30, 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+\noindent
+The BNN and ensemble notebooks run for an hour or more on the 5090, reached from a laptop
+by \code{ssh}. This note explains which parts of the set-up live where, what survives a
+closed browser tab or a broken connection, and how to start, watch, interrupt, resume and
+collect a run. Names in angle brackets, such as \code{<user>@<host>}, stand for your own
+values. The conda environment on the 5090 is \code{ml}; the repository is
+\file{~/Projects/dihiggs} there and \file{~/Projects/Tutorials/GitHub/dihiggs} on the Mac.
+\end{abstract}
+
+\begin{keyidea}[The one rule]
+Everything that must keep running is started, directly or indirectly, inside \code{tmux}
+on the 5090. Then the laptop, the browser and the \code{ssh} connection can all go away
+without stopping it.
+\end{keyidea}
+
+% ===========================================================================
+\section{What runs where}
+
+\begin{figure}[h]
+\centering
+\resizebox{\textwidth}{!}{%
+\begin{tikzpicture}[
+  font=\small, >={Stealth[length=2.2mm]},
+  box/.style={draw, rounded corners=2pt, thick, align=center, inner sep=3pt,
+              minimum height=10mm, text width=30mm},
+  lap/.style={box, fill=datac!8, draw=datac!80!black},
+  gpu/.style={box, fill=trainable!10, draw=trainable!80!black},
+  job/.style={box, fill=physics!10, draw=physics!80!black},
+]
+\node[lap] (browser) at (0, 1.2) {browser\\\footnotesize JupyterLab page};
+\node[lap] (term)    at (0, -1.2) {laptop terminal\\\footnotesize \code{ssh -N -L ...}};
+\node[gpu] (tmux1)   at (5.2, 1.2) {\code{tmux} session\\\footnotesize \code{jupyter lab}};
+\node[gpu] (tmux2)   at (5.2, -1.6) {\code{tmux} session\\\footnotesize a shell};
+\node[job] (kern)    at (10.4, 2.0) {notebook kernel\\\footnotesize e.g.\ the ensemble};
+\node[job] (jterm)   at (10.4, 0.4) {JupyterLab terminal\\\footnotesize e.g.\ a script};
+\node[job] (script)  at (10.4, -1.6) {script\\\footnotesize \code{python heft\_...py}};
+\draw[->, thick, dashed] (browser) -- node[above, font=\footnotesize]{tunnel} (tmux1);
+\draw[thick, dashed] (term) -- (3.0, 0.2);
+\draw[->, thick] (tmux1) -- (kern);
+\draw[->, thick] (tmux1) -- (jterm);
+\draw[->, thick] (tmux2) -- (script);
+\node[font=\footnotesize, text=black!60] at (0, 2.5) {laptop};
+\node[font=\footnotesize, text=black!60] at (7.8, 3.1) {RTX 5090 machine};
+\end{tikzpicture}}
+\caption{Purple: on the laptop; they may disappear at any time. Blue and green: on the
+5090. Kernels and JupyterLab terminals belong to the Jupyter server; scripts started in
+their own \code{tmux} session depend on nothing else.}
+\label{fig:where}
+\end{figure}
+
+\begin{center}
+\small
+\begin{tabular}{p{0.46\textwidth}cc}
+\toprule
+event & the run in Jupyter & a script in \code{tmux}\\
+\midrule
+close the browser tab or the browser & continues & continues\\
+break the tunnel, close the laptop, lose the network & continues & continues\\
+JupyterLab: close a notebook or terminal \emph{tab} & continues & continues\\
+JupyterLab: \textbf{Shut Down} kernel/terminal, \textbf{File $\to$ Shut Down} & \textbf{stops} & continues\\
+\code{Ctrl-c} in the \code{tmux} pane running \code{jupyter lab} & \textbf{stops} & continues\\
+\code{Ctrl-c} in the \code{tmux} pane running the script & continues & \textbf{stops}\\
+the 5090 reboots & \textbf{stops} & \textbf{stops}\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\noindent While no browser is connected, the kernel's printed output is not recorded in
+the notebook. The computation and every file it writes (run folders, traces, figures) are
+unaffected.
+
+% ===========================================================================
+\section{Updating the code first}
+
+On the Mac, commit and push; on the 5090, pull:
+\begin{lstlisting}[style=sh]
+cd ~/Projects/Tutorials/GitHub/dihiggs
+git push
+\end{lstlisting}
+\begin{lstlisting}[style=sh]
+cd ~/Projects/dihiggs
+git pull
+\end{lstlisting}
+Then restart any Jupyter kernel that imports \code{dihiggs}, so that it loads the new
+modules. If \code{git pull} refuses because a notebook was edited on the 5090 (for example
+its switches), discard that edit and pull again, then re-enter the switches:
+\begin{lstlisting}[style=sh]
+git checkout code/heft_train_bnn.ipynb
+git pull
+\end{lstlisting}
+A quick check that the 5090 has the new \file{hmc.py}: a BNN run prints, at the start, a
+line beginning \code{warm-up: step size only for iterations 1-75}.
+
+% ===========================================================================
+\section{Recipe A: a script in its own \texttt{tmux} session (most robust)}
+
+\begin{enumerate}
+  \item Set the switches in the notebook (in JupyterLab, or any editor) and save it.
+  \item On the 5090, start a named \code{tmux} session and go to the code folder:
+\begin{lstlisting}[style=sh]
+tmux new -s bnn
+conda activate ml
+cd ~/Projects/dihiggs/code
+\end{lstlisting}
+  \item Convert the notebook to a script, and run it:
+\begin{lstlisting}[style=sh]
+jupyter nbconvert --to script heft_train_bnn.ipynb
+MPLBACKEND=Agg python heft_train_bnn.py 2>&1 | tee bnn_run.log
+\end{lstlisting}
+    \code{MPLBACKEND=Agg} makes matplotlib write figures to files instead of opening
+    windows; \code{tee} shows the output and also keeps it in \file{bnn_run.log}.
+  \item Detach: press \code{Ctrl-b}, then \code{d}. You may now log out.
+  \item Later, reattach with
+\begin{lstlisting}[style=sh]
+tmux attach -t bnn
+\end{lstlisting}
+\end{enumerate}
+\noindent The same works for \file{heft_train_ensemble.ipynb} (choose another session
+name, e.g.\ \code{ens}, and another log file). Re-run the \code{nbconvert} line whenever
+the notebook changes, or the script will run the old switches.
+
+% ===========================================================================
+\section{Recipe B: JupyterLab through an \texttt{ssh} tunnel}
+
+\begin{enumerate}
+  \item On the 5090, start the Jupyter server inside \code{tmux}, then detach
+    (\code{Ctrl-b}, \code{d}):
+\begin{lstlisting}[style=sh]
+tmux new -s jupyter
+conda activate ml
+cd ~/Projects/dihiggs
+jupyter lab --no-browser --port <port>
+\end{lstlisting}
+    Note the URL with its token that it prints.
+  \item On the laptop, open the tunnel in a terminal of its own, and leave it open:
+\begin{lstlisting}[style=sh]
+ssh -N -L <port>:localhost:<port> <user>@<host>
+\end{lstlisting}
+    Then open \code{http://localhost:<port>} (with the token) in the browser.
+  \item Run the notebook as usual, or open a JupyterLab terminal and run Recipe A's
+    script commands there (step 3).
+  \item To leave: close the browser tab, then press \code{Ctrl-c} in the tunnel's
+    terminal (or close it). Never use the \textbf{Shut Down} entries of JupyterLab for a
+    run you want to keep.
+  \item To come back: open the tunnel again and reload the page.
+\end{enumerate}
+
+\begin{watch}[A script started in a JupyterLab terminal]
+It runs on the 5090 and survives a closed tab and a broken tunnel, but it belongs to the
+Jupyter server: if the server stops, so does the script. For long runs, Recipe A is safer.
+\end{watch}
+
+% ===========================================================================
+\section{Watching a run}
+
+From any \code{ssh} session on the 5090, in \file{~/Projects/dihiggs/code}: the
+script's output so far, the BNN trace (one line per iteration), the ensemble summary (one
+line per member), the GPU, and the running \code{tmux} sessions:
+\begin{lstlisting}[style=sh]
+cd ~/Projects/dihiggs/code
+tail -n 30 bnn_run.log
+tail -f runs/BNN_poisson/dihiggs_hmc_trace.csv
+cat runs/ENS_bootstrap/ensemble.csv
+nvidia-smi
+tmux ls
+\end{lstlisting}
+\noindent \code{tail -f} keeps printing new lines; \code{Ctrl-c} stops the watching, not
+the run.
+
+% ===========================================================================
+\section{Interrupting and resuming}
+
+\begin{itemize}
+  \item \textbf{BNN.} Stop a run with \code{Ctrl-c} in its \code{tmux} pane, or
+    \textbf{Kernel $\to$ Interrupt} in JupyterLab. The sampler then saves a checkpoint at
+    the last complete iteration (it also saves one every few minutes, in case of a crash).
+    To continue, set \code{RESUME = True}, keep the other switches, save, and run again
+    (for Recipe A, re-run the \code{nbconvert} line first). The result is identical to an
+    uninterrupted run. A larger \code{N\_SAMPLES} extends a finished run.
+  \item \textbf{Ensemble.} Members already finished are skipped, so just run the notebook
+    again; at most the member in progress is lost.
+  \item \textbf{Before resuming,} make sure the old run has really stopped (\code{tmux ls},
+    \code{nvidia-smi}): two processes writing to the same run folder would corrupt it.
+\end{itemize}
+
+% ===========================================================================
+\section{Several jobs on one GPU}
+
+\code{HEFTNet} is small: each job needs about 0.5--1 GB of the 5090's 32 GB, and much of its
+time is Python overhead, so two or three jobs can share the GPU, each running somewhat
+slower. Check \code{nvidia-smi}: if the utilisation is already near 100\%, another job
+mainly slows the others down. Each job also keeps about one CPU core busy. Two copies of
+the ensemble notebook can train different members at once, with disjoint
+\code{MEMBERS} ranges such as \code{range(0, 10)} and \code{range(10, 20)}.
+
+% ===========================================================================
+\section{Bringing the results back to the Mac}
+
+On the 5090, pack the run folder; on the Mac, copy it into \file{code/runs/}:
+\begin{lstlisting}[style=sh]
+cd ~/Projects/dihiggs/code/runs
+tar czf BNN_poisson.tar.gz BNN_poisson
+\end{lstlisting}
+\begin{lstlisting}[style=sh]
+cd ~/Projects/Tutorials/GitHub/dihiggs/code/runs
+scp <user>@<host>:Projects/dihiggs/code/runs/BNN_poisson.tar.gz .
+tar xzf BNN_poisson.tar.gz
+\end{lstlisting}
+
+\begin{watch}[Run folders are overwritten]
+A new BNN run with the same likelihood writes into the same folder,
+\file{runs/BNN_<likelihood>}, and replaces the previous run. Rename the old folder first
+(e.g.\ \file{BNN_poisson} $\to$ \file{BNN_poisson3}), on the 5090 before starting, and on
+the Mac before unpacking.
+\end{watch}
+
+\end{document}

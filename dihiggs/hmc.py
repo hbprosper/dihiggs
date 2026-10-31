@@ -706,6 +706,7 @@ class HMC:
         self.n_warmup  = None       # set by run()
         self._da = None             # dual-averaging variables (see below)
         self._welford = None        # running variance of w (mass matrix)
+        self._win_accept = 0        # accepted trajectories in this window
 
     # ------------------------------------------------------------------------
     # Small helpers
@@ -894,15 +895,24 @@ class HMC:
         s['M2'] += delta * (x - s['mean'])
 
     def _welford_mass(self):
+        '''
+        The new M^{-1}: the variance of each parameter over the window just
+        ended, shrunk towards the median variance. Returns None if the
+        window is useless (the chain did not move, so every variance is
+        zero, or the numbers are not finite); the caller then keeps the old
+        mass matrix. The running variance is reset in either case.
+        '''
         s = self._welford
+        self._welford = None
         n = s['n']
         var = s['M2'] / max(n - 1, 1)
+        med = torch.median(var)
+        if not (math.isfinite(float(med)) and float(med) > 0):
+            return None
         # Shrink each variance towards the median variance; this guards
         # against a parameter that happened not to move during the window.
-        med = torch.median(var)
         var = (n / (n + 5.0)) * var + (5.0 / (n + 5.0)) * med
         var = torch.clamp(var, min=float(med) * 1e-6 + 1e-30)
-        self._welford = None
         return var.to(self.w.dtype)
 
     # ------------------------------------------------------------------------
@@ -940,8 +950,11 @@ class HMC:
         # state_dict() is the standard PyTorch dictionary of a model's
         # parameters; model.load(file) or model.load_state_dict(torch.load(
         # file)) reads it back.
-        torch.save(self.post.model.state_dict(),
-                   os.path.join(self.sampledir, fname))
+        # .cpu() copies each tensor to the CPU, so that the file can be read
+        # on a machine without a GPU even with a plain torch.load(file)
+        state = {k: v.detach().cpu()
+                 for k, v in self.post.model.state_dict().items()}
+        torch.save(state, os.path.join(self.sampledir, fname))
         G = len(self.post.prior.tau)
         header = ['file', 'iteration', 'U', 'scale'] + \
                  [f'tau_{g+1}' for g in range(G)]
@@ -968,6 +981,7 @@ class HMC:
             'n_diverge_warmup': self.n_diverge_warmup,
             'n_warmup': self.n_warmup,
             'da': None if self._da is None else dict(self._da),
+            'win_accept': self._win_accept,
             'welford': None if self._welford is None else
                        {k: (v.detach().cpu().clone() if torch.is_tensor(v)
                             else v)
@@ -1000,6 +1014,8 @@ class HMC:
         self.n_accept, self.n_diverge = s['n_accept'], s['n_diverge']
         self.n_diverge_warmup = s['n_diverge_warmup']
         self.n_warmup, self._da = s['n_warmup'], s['da']
+        # (.get gives 0 for checkpoints written before this counter existed)
+        self._win_accept = s.get('win_accept', 0)
         self._welford = None
         if s['welford'] is not None:
             self._welford = {k: (v.to(device) if torch.is_tensor(v) else v)
@@ -1112,19 +1128,44 @@ class HMC:
                 # warm-up tuning
                 if warm:
                     self._da_update(prob)
+                    if mass_on and it == init:
+                        # End of the initial buffer. During it the chain may
+                        # have been descending from a starting point far from
+                        # the bulk of the posterior; early trajectories with
+                        # huge energy errors can then drive the step-size
+                        # tuning to absurdly small values (1e-10 was seen),
+                        # and a chain that does not move teaches the first
+                        # window nothing. So find a fresh step size for the
+                        # chain as it is now, and restart the tuning.
+                        self.eps = self.find_step_size(self.eps)
+                        self._refresh()
+                        self._da_start(self.eps)
+                        self._win_accept = 0
                     if mass_on and init < it <= window_ends[-1]:
                         self._welford_add(self.w)
+                        if accepted:
+                            self._win_accept += 1
                     if mass_on and it in window_ends:
                         # end of a window: new mass matrix from the variance
                         # of w over the window (_welford_mass also starts a
                         # fresh variance for the next window), then find a
-                        # step size that suits it and restart the tuning
-                        self.mass_inv = self._welford_mass()
+                        # step size that suits it and restart the tuning.
+                        # A window in which fewer than 3 trajectories were
+                        # accepted, or in which nothing moved, is not used:
+                        # its variances would describe the sampler's failure
+                        # to move, not the posterior.
+                        new_mass = self._welford_mass()
+                        if new_mass is None or self._win_accept < 3:
+                            msg = 'mass matrix NOT updated (the chain hardly moved in this window)'
+                        else:
+                            self.mass_inv = new_mass
+                            msg = 'mass matrix updated'
+                        self._win_accept = 0
                         self.eps = self.find_step_size(self.eps)
                         self._refresh()
                         self._da_start(self.eps)
                         if print_every:
-                            print(f'{it:6d}/{n_total} mass matrix updated; '
+                            print(f'{it:6d}/{n_total} {msg}; '
                                   f'new step size {self.eps:.3e}', flush=True)
                     if it == n_warmup:
                         # freeze the step size at its averaged value
@@ -1300,7 +1341,6 @@ class BNN:
         the HMC iteration and the noise scale. The folder can be read back
         with BNN(model_factory, outdir) and given to users of the model.
         '''
-        import shutil
         sampledir = os.path.join(outdir, 'samples')
         if os.path.exists(sampledir) and glob.glob(
                 os.path.join(sampledir, 'params_*.pth')):
@@ -1314,7 +1354,11 @@ class BNN:
             for n, (f, it, sc) in enumerate(zip(self.files, self.iterations,
                                                 self.scales), start=1):
                 name = f'params_{n:04d}.pth'
-                shutil.copyfile(f, os.path.join(sampledir, name))
+                # load (onto the CPU) and save again, rather than copy the
+                # file, so that samples written on a GPU by earlier versions
+                # are converted to CPU tensors
+                state = torch.load(f, map_location='cpu', weights_only=True)
+                torch.save(state, os.path.join(sampledir, name))
                 writer.writerow([name, it, f'{sc:.6g}', f])
         print(f'wrote {len(self.files)} samples to {sampledir}')
 
