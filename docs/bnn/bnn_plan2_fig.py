@@ -1,0 +1,18 @@
+import numpy as np, pandas as pd, matplotlib.pyplot as plt
+plt.rcParams.update({"text.usetex": True, "font.family": "serif", "font.size": 11})
+d=pd.read_csv('/home/claude/ana4/BNN_poisson_full/dihiggs_hmc_trace.csv')
+fig,ax=plt.subplots(1,2,figsize=(10,3.8))
+a=ax[0]; dd=d[d.iteration>=10]; a.plot(dd.iteration,dd.U-163900,lw=0.4,color='#1B6CA8',alpha=0.7)
+rm=pd.Series(dd.U.values-163900).rolling(100,center=True).mean(); a.plot(dd.iteration,rm,color='#C0392B',lw=1.2,label='running mean (100 iterations)')
+a.axvline(1000,color='k',ls=':',lw=0.8); a.text(1030,860,'sampling',fontsize=9); a.text(970,860,'warm-up',fontsize=9,ha='right')
+a.set_ylim(-200,950); a.set_xlabel('iteration'); a.set_ylabel(r'$U - 163{,}900$'); a.legend(frameon=False,fontsize=9,loc='lower left')
+a.text(0.98,0.80,r'iteration 1: $U - 163{,}900 \approx 150{,}000$',transform=a.transAxes,ha='right',fontsize=8)
+sp=pd.read_csv('/home/claude/work/data/heft_wide_gauss_testdata_13TeV.csv');b=[c for c in sp.columns if c.isdigit()];F=sp[b].to_numpy(float)
+var=np.where(F>0,F*F.sum(1,keepdims=True)/38024.,np.nan)
+a4=np.load('/home/claude/ana4/means.npz');a5=np.load('/home/claude/ana5/ana5.npz')
+lab=['Bayesian\nnetwork','fine-tuned\nseeds','fine-tuned\nbootstrap']; val=[274152*np.nanmean(x**2/var) for x in [a4['sb'],a5['FT_seeds_sd'],a5['FT_boot_sd']]]
+a=ax[1]; a.bar(lab,val,color=['#7B4EA3','#1B6CA8','#1B6CA8'],width=0.55); a.set_yscale('log'); a.set_ylim(10,2e4)
+a.axhline(3944,color='k',ls='--',lw=0.8); a.text(-0.4,4500,r'$p = 3{,}944$ parameters',ha='left',fontsize=9)
+for x,v in enumerate(val): a.text(x,v*0.7,f'{v:.0f}',ha='center',va='top',fontsize=9,color='white')
+a.set_ylabel(r'$N\,\langle s_k^2/\sigma_k^2\rangle$')
+fig.tight_layout(); fig.savefig('fig_evidence.pdf'); print(val)

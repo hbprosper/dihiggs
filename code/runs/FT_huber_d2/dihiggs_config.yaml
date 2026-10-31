@@ -1,0 +1,29 @@
+name: dihiggs
+file:
+  losses: runs/FT_huber_d2/dihiggs_losses.csv
+  params: runs/FT_huber_d2/dihiggs_params.pth
+  init_params: runs/FT_huber_d2/dihiggs_init_params.pth
+  plots: runs/FT_huber_d2/dihiggs_plots.png
+  config: runs/FT_huber_d2/dihiggs_config.yaml
+model_name: heftnet
+features:
+- mhh
+- klambda
+- CT
+- CTT
+- CGGH
+- CGGHH
+target: sigma
+activation: nn.ReLU
+traindata_sha256: af0b220986b01474216e6cecaa236cb5b2aabe5a6c5e818520314b28e59e7d68
+train_size: 274152
+val_size: 5078
+test_size: 38076
+loss: huber_pull
+finetune:
+  start: runs/L1Loss/dihiggs_params.pth
+  delta: 2.0
+  variance_from: data
+  N_eff: 38023.64035688934
+  steps: 10000
+  lr: 0.0001

@@ -1,0 +1,49 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{mathpazo}
+\usepackage{amsmath,amssymb}
+\usepackage{microtype}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage[dvipsnames]{xcolor}
+\usepackage{tikz}
+\usetikzlibrary{positioning,arrows.meta,calc,fit,backgrounds}
+\usepackage[most]{tcolorbox}
+\usepackage{enumitem}
+\usepackage{listings}
+\usepackage[font=small,labelfont=bf]{caption}
+\usepackage{hyperref}
+\hypersetup{colorlinks=true,linkcolor=MidnightBlue,citecolor=MidnightBlue,urlcolor=MidnightBlue}
+\usepackage{cleveref}
+\urlstyle{tt}
+\def\UrlBreaks{\do\_\do/\do.}
+\newcommand{\file}[1]{\nolinkurl{#1}}
+\newcommand{\code}[1]{\texttt{#1}}
+\newcommand{\mhh}{m_{hh}}
+\newcommand{\bw}{\boldsymbol{\omega}}
+\newcommand{\bp}{\boldsymbol{p}}
+\newcommand{\bx}{\boldsymbol{x}}
+\newcommand{\data}{\mathcal{D}}
+
+\definecolor{trainable}{HTML}{1B6CA8}
+\definecolor{physics}{HTML}{2E933C}
+\definecolor{datac}{HTML}{7B4EA3}
+\definecolor{warn}{HTML}{C0392B}
+
+\newtcolorbox{keyidea}[1][]{enhanced,breakable,colback=physics!6,colframe=physics!70!black,
+  fonttitle=\bfseries,title={#1},boxrule=0.6pt,arc=2pt,left=6pt,right=6pt}
+\newtcolorbox{aside}[1][]{enhanced,breakable,colback=trainable!5,colframe=trainable!70!black,
+  fonttitle=\bfseries,title={#1},boxrule=0.6pt,arc=2pt,left=6pt,right=6pt}
+\newtcolorbox{assume}[1][]{enhanced,breakable,colback=datac!5,colframe=datac!70!black,
+  fonttitle=\bfseries,title={#1},boxrule=0.6pt,arc=2pt,left=6pt,right=6pt}
+\newtcolorbox{watch}[1][]{enhanced,breakable,colback=warn!5,colframe=warn!70!black,
+  fonttitle=\bfseries,title={#1},boxrule=0.6pt,arc=2pt,left=6pt,right=6pt}
+\setlist{itemsep=2pt,topsep=3pt}
+\setlength{\emergencystretch}{3em}
+
+\lstset{language=Python, basicstyle=\ttfamily\small, columns=fullflexible,
+  keepspaces=true, commentstyle=\color{physics!70!black}\itshape,
+  keywordstyle=\color{trainable!90!black}\bfseries, stringstyle=\color{datac},
+  showstringspaces=false, frame=single, rulecolor=\color{gray!40},
+  backgroundcolor=\color{gray!3}, xleftmargin=4pt, xrightmargin=4pt,
+  aboveskip=6pt, belowskip=6pt}

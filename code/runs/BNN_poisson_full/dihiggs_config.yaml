@@ -1,0 +1,31 @@
+name: dihiggs
+file:
+  losses: runs/BNN_poisson_full/dihiggs_losses.csv
+  params: runs/BNN_poisson_full/dihiggs_params.pth
+  init_params: runs/BNN_poisson_full/dihiggs_init_params.pth
+  plots: runs/BNN_poisson_full/dihiggs_plots.png
+  config: runs/BNN_poisson_full/dihiggs_config.yaml
+model_name: heftnet
+features:
+- mhh
+- klambda
+- CT
+- CTT
+- CGGH
+- CGGHH
+target: sigma
+traindata_sha256: af0b220986b01474216e6cecaa236cb5b2aabe5a6c5e818520314b28e59e7d68
+train_size: 274152
+n_train_rows: 274152
+bnn:
+  likelihood: poisson
+  warm_start: runs/L1Loss/dihiggs_params.pth
+  n_warmup: 1000
+  n_samples: 1000
+  thin: 1
+  n_leapfrog: 800
+  target_accept: 0.8
+  n_chains: 1
+  data_fraction: 1
+  N_eff: 38023.64035688934
+  seed: 42

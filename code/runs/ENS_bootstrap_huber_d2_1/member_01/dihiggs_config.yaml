@@ -1,0 +1,41 @@
+name: dihiggs
+file:
+  losses: runs/ENS_bootstrap_huber_d2/member_01/dihiggs_losses.csv
+  params: runs/ENS_bootstrap_huber_d2/member_01/dihiggs_params.pth
+  init_params: runs/ENS_bootstrap_huber_d2/member_01/dihiggs_init_params.pth
+  plots: runs/ENS_bootstrap_huber_d2/member_01/dihiggs_plots.png
+  config: runs/ENS_bootstrap_huber_d2/member_01/dihiggs_config.yaml
+model_name: heftnet
+features:
+- mhh
+- klambda
+- CT
+- CTT
+- CGGH
+- CGGHH
+target: sigma
+activation: nn.ReLU
+traindata_sha256: af0b220986b01474216e6cecaa236cb5b2aabe5a6c5e818520314b28e59e7d68
+loss: L1
+batch_size: 2048
+train_size: 274152
+test_size: 38076
+val_size: 5078
+monitor_step: 100
+frac: 0.015
+n_steps: 4
+n_iterations: 200000
+n_iters_per_step: 50000
+base_lr: 0.002
+gamma: 0.5
+ensemble:
+  mode: bootstrap
+  member: 1
+  seed: 42
+  boot_seed: 1000
+finetune:
+  delta: 2.0
+  steps: 10000
+  lr: 0.0001
+  variance_from: data
+  N_eff: 38023.64035688934
