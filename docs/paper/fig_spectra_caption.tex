@@ -1,15 +1,13 @@
-% Figure: ensemble predictions against POWHEG for nine test spectra.
 \begin{figure}[t]
 \centering
 \includegraphics[width=\textwidth]{fig_spectra_panel.pdf}
-\caption{POWHEG spectra (points; error bars: Poisson noise) and the model (line: mean of the
-20 fine-tuned networks) for nine of the 1,000 test spectra, ranked by $\chi^2/N$ between the
-two: the three largest (top), three around the median (middle) and the three smallest
-(bottom). Dark band: network uncertainty ($\pm1\sigma$; spread between the networks and the
-Laplace uncertainty of each); light band: total uncertainty including the model-error term.
-The lower panels show the ratio of POWHEG to the model. Each panel gives the HEFT
-parameters, the total cross section in 255--1455~GeV from POWHEG and from the model, and
-$\chi^2/N$. The largest $\chi^2/N$ occur where the total cross section
-is smallest, through destructive interference.}
+\caption{POWHEG spectra divided by the bin width (points; error bars: Poisson noise) and the smooth
+model's density $d\sigma/dm_{hh}$ (line) for nine of the 1,000 test spectra, ranked by the Poisson
+deviance per bin: the three largest (top), three around the median (middle) and the three smallest
+(bottom). Dark band: fit uncertainty ($\pm1\sigma$); light band: total, including the model
+discrepancy. The lower panels show the ratio of POWHEG to the model's bin integrals. Each panel gives
+the HEFT parameters, the total cross section in 255--1455~GeV from POWHEG and from the model, and the
+deviance per bin. The largest deviances occur where the total cross section is smallest, through
+destructive interference.}
 \label{fig:spectra}
 \end{figure}

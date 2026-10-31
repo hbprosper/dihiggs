@@ -1,0 +1,22 @@
+% Stand-alone wrapper for reading the draft appendix. In the paper, use
+%   \appendix
+%   \input{appendix_uncertainty}
+% and add appendix_refs.bib to the bibliography.
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage[numbers,sort&compress]{natbib}
+\usepackage{hyperref}
+\title{Draft appendix: uncertainty of the network model}
+\author{}
+\date{1 November 2026}
+\begin{document}
+\maketitle
+\appendix
+\renewcommand{\thesection}{A}
+\section*{}\vspace{-3em}
+\input{appendix_uncertainty}
+\bibliographystyle{unsrtnat}
+\bibliography{appendix_refs}
+\end{document}

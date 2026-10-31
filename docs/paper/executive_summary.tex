@@ -10,66 +10,57 @@ K.\,F.~Johnson, H.\,B.~Prosper, R.~Starnes (Florida State University)}\\[2pt]
 \end{center}
 \vspace{-4pt}
 \small
-\noindent\textbf{Goal.} A fast surrogate for POWHEG: the cross section per 15~GeV bin of
-$m_{hh}$ (255--1455~GeV) as a function of five HEFT coefficients, with a calibrated
-uncertainty. \texttt{HEFTNet} writes $\sigma = \sum_{i=1}^{23} C_i(\theta)\,a_i(m_{hh})$, with
-known polynomials $C_i$ and 23 functions $a_i$ given by a network of 3,944 parameters that
-sees only $m_{hh}$. Training: 3,989 POWHEG spectra (274,152 rows used); validation on 1,000
-independent test spectra.
+\noindent\textbf{Goal.} A fast surrogate for POWHEG: the di-Higgs cross section as a function of
+$m_{hh}$ (255--1455~GeV) and of five HEFT coefficients, with a calibrated uncertainty, written as
+$d\sigma/dm_{hh} = \sum_{i=1}^{23} C_i(\theta)\,a_i(m_{hh})$ with known polynomials $C_i$ and 23
+functions $a_i$ of $m_{hh}$ alone. Data: 3,989 POWHEG spectra for the fit; 1,000 independent test
+spectra for validation.
 
 \begin{keyidea}[Principal findings]
 \begin{enumerate}[leftmargin=1.3em]
-  \item \textbf{The data are exact Poisson counts.} Every spectrum is $q_s \times$ integer
-    counts (40,000 generated events per run; a few incomplete runs, listed in \file{data/README.md}). The noise is
-    known exactly; the earlier estimate ($N_\text{eff}$) was within 3\% for typical spectra.
-  \item \textbf{Weight the errors by the noise.} L1 training leaves the threshold region
-    poor ($\langle\chi^2\rangle = 8.4$ per bin at 255--555~GeV). A fine-tune with the Huber
-    loss of the pulls ($\delta = 2$) brings it to 1.6 (insensitive to $\delta$), with median
-    $\chi^2/N = 1.07$ on the test spectra.
-  \item \textbf{The ensemble spread is mostly optimisation, and it under-covers.} 20-network
-    ensembles (seeds; bootstrap of rows): 80\% of the fine-tuned spread is due to the
-    random seed, 20\% to the finite sample; the spread is 5.6\% of the POWHEG noise, and the
-    pulls have s.d.\ 1.07 (1.15 near threshold).
-  \item \textbf{The model error dominates.} A discrepancy term $a(m_{hh})\sigma_k^2$, with
-    $a = 0.76\,e^{-(m_{hh}-255)/76\,\text{GeV}} + 0.11$ fitted on held-out training rows,
-    i.e.\ 0.3--0.9 of the noise, gives pull s.d.\ 1.003 (1.02 near threshold) and
-    95.1\% of bins with $|z|<2$ (95.4\% expected).
-  \item \textbf{Bayes works, once computed correctly.} HMC (Neal's method) gave a good mean
-    but a width of 0.5\% of the noise, because a single chain could not explore a posterior
-    with curvature ratios $\sim\!10^6$. A mixture of linearised Laplace approximations about
-    the 20 networks (exact for this architecture, 30~s per network on a CPU) gives
-    2.4\% (within networks) $\oplus$ 5.6\% (between) $= 6.1\%$ of the noise; the prior
-    hardly matters ($\pm4\%$). The posterior is narrow because $\sim$400 effective
-    parameters are fixed by $2.8\times10^5$ rows; calibration requires the model-error term.
-  \item \textbf{Where the surrogate fails}: the worst test spectra are those with the
-    smallest total cross section (strong destructive interference), e.g.\ $\chi^2/N = 68$ at
-    the smallest-$\sigma$ test point.
+  \item \textbf{The primary model is the smooth $23\times80$ model}: each $a_i(m_{hh})$ is a
+    smoothed spline times the phase-space factor, fitted to the bin \emph{integrals} by Poisson
+    maximum likelihood, with smoothness set by the evidence. It is linear in its 920
+    parameters, so its posterior is exactly Gaussian; no training, a minute on a laptop. It is a
+    genuine density in $m_{hh}$: fitted on 30-GeV bins it predicts the 15-GeV split to within the
+    noise above 360~GeV.
+  \item \textbf{It is as accurate as any model of this form can be.} A free fit of 23 numbers
+    per bin, the floor for the form $\sum_i C_i a_i$, does no better (deviance per bin 1.56/1.10
+    below/above 555~GeV for both); neither does the network ensemble (1.56/1.12).
+  \item \textbf{The data are exact Poisson counts}, $q_s\times$ integers (40,000 events per run),
+    and weighting by the \emph{observed} counts biases fits low; weighting by the model's
+    Poisson variance (iterated) removes the bias.
+  \item \textbf{The residual model error comes from cancellations.} Spectra whose cross section is
+    a small difference of large terms deviate smoothly from the 23-term form, in POWHEG itself. A
+    discrepancy $\varepsilon(m_{hh})\sum_i|C_ia_i|$, with $\varepsilon$ = 0.08\% at threshold to
+    3.7\% at 1.45~TeV, fitted on rows not used in the fit, gives pull s.d.\ 1.004 (1.011/1.001
+    below/above 555~GeV), 95.4\% within $\pm2$, and calibration at every degree of cancellation.
+    The fit uncertainty itself is 2.9\% of the noise.
+  \item \textbf{Cross-checks agree.} A 20-network ensemble (L1 + Huber-pull fine-tune) gives the
+    same accuracy and, with the same discrepancy, the same calibration; its spread is 80\%
+    optimisation. A Bayesian network by HMC under-sampled (0.5\% of the noise); a mixture of
+    Laplace approximations gives 2.4\% $\oplus$ 5.6\%, consistent with the smooth model.
 \end{enumerate}
 \end{keyidea}
 
 \noindent\textbf{Investigations, in order.}
 \begin{itemize}[leftmargin=1.2em]
-  \item \emph{BNN with HMC} (\file{hmc.py}): Laplace and Gaussian likelihoods, 10\% and full
-    data, longer trajectories; diagnosis in \file{docs/bnn/bnn_plan2.pdf}.
-  \item \emph{Ensembles} (\file{ensemble.py}): seeds vs bootstrap, law-of-total-variance
-    decomposition, the reference-ensemble question (\file{docs/ensemble}).
-  \item \emph{Huber-pull fine-tune} (\file{finetune.py}): $\delta = 1, 2, 3, \infty$;
-    10,000 full-batch steps (\file{docs/huber}).
-  \item \emph{Exact counts} (\file{counts.py}): scale factor and integer counts per
-    spectrum; empty bins restored (\file{docs/counts}).
-  \item \emph{Mixture of Laplace approximations} (\file{laplace.py}): MacKay's evidence for
-    the prior, linearisation checks (\file{docs/bnn/laplace_explained.pdf}).
+  \item \emph{BNN with HMC} (\file{hmc.py}); diagnosis in \file{docs/bnn/bnn_plan2.pdf}.
+  \item \emph{Ensembles} (\file{ensemble.py}): seeds vs bootstrap, reference ensembles (\file{docs/ensemble}).
+  \item \emph{Huber-pull fine-tune} (\file{finetune.py}), \file{docs/huber}.
+  \item \emph{Exact counts} (\file{counts.py}), \file{docs/counts}.
+  \item \emph{Mixture of Laplace approximations} (\file{laplace.py}), \file{docs/bnn/laplace_explained.pdf}.
+  \item \emph{Origin of the model error}: free-fit benchmark, cancellation-aware discrepancy (\file{docs/modelerror}).
+  \item \emph{Smooth $23\times80$ model} (\file{smooth.py}), \file{docs/smooth}.
 \end{itemize}
 
-\noindent\textbf{Recommended result for the paper.} The fine-tuned ensemble mean, with
-uncertainty = ensemble spread (or the Laplace mixture) $\oplus$ model error; the Bayesian
-mixture as a consistent cross-check. Draft appendix and the 9-panel spectra figure:
-\file{docs/paper}.
+\noindent\textbf{Result for the paper.} The smooth model with the cancellation-aware
+discrepancy; the network ensemble and the Bayesian network as cross-checks. Draft appendix and
+figures: \file{docs/paper}.
 
-\noindent\textbf{Open items.} Re-quote the appendix with the exact Poisson noise (shifts of
-$\sim$1\%); the model error is treated as independent between bins (a correlated,
-Gaussian-process discrepancy is the principled extension); the short POWHEG runs listed in \file{data/README.md} are kept in the default training file;
-consider more training points where the cross section is small.
+\noindent\textbf{Open items.} A discrepancy correlated in $m_{hh}$ (Gaussian process); the
+origin of the cancellation-dependent deviations and of the rise of $\varepsilon$ at high mass
+(questions for the generator side); finer knots near threshold; use only within 250--1455~GeV.
 
 \newpage
 \begin{center}
@@ -77,7 +68,7 @@ consider more training points where the cross section is small.
 \end{center}
 \vspace{-6pt}
 \begin{center}
-\begin{tikzpicture}[
+\begin{tikzpicture}[scale=0.82, transform shape,
   font=\footnotesize, >=Stealth,
   dat/.style={draw=datac!70!black, fill=datac!8, rounded corners=2pt, align=center, inner sep=3pt, minimum height=8mm},
   nb/.style={draw=trainable!70!black, fill=trainable!8, rounded corners=2pt, align=center, inner sep=3pt, minimum height=8mm},
@@ -95,18 +86,21 @@ consider more training points where the cross section is small.
   \node[run] (ftr) at (-5.2,-8.05) {\texttt{runs/FT\_*}};
   \node[run] (ensr) at (-1.9,-8.05) {\texttt{runs/ENS\_*}};
   \node[run] (bnnr) at (1.6,-8.05) {\texttt{runs/BNN\_*}};
-  \node[nb]  (lap) at (-1.9,-9.4) {\texttt{heft\_laplace}\\Laplace mixture + model error};
+  \node[nb]  (lap) at (-1.9,-9.4) {\texttt{heft\_laplace}\\Laplace mixture (cross-check)};
+  \node[nb, very thick]  (smo) at (-5.2,-4.05) {\texttt{heft\_smooth}\\\textbf{primary model}};
+  \node[run] (smor) at (-5.2,-5.35) {\texttt{runs/SMOOTH\_J40}};
   \node[run] (lapr) at (-1.9,-10.7) {\texttt{runs/LAPLACE\_*}};
   \node[nb]  (test) at (5.0,-4.05) {\texttt{heft\_test}, \texttt{heft\_checks}\\validation};
   \node[nb]  (exp) at (5.0,-5.35) {\texttt{heft\_export}\\Python/C++ versions};
   \node[dat] (paper) at (2.4,-10.7) {\textbf{docs/paper/}\\appendix, figures};
   \draw[arr] (src) -- (prep); \draw[arr] (prep) -- (tr); \draw[arr] (prep) -- (te);
   \draw[arr] (tr) -- (train); \draw[arr] (train) -- (l1);
+  \draw[arr] (tr) -| (smo); \draw[arr] (smo) -- (smor);
   \draw[arr] (l1) -- (ft); \draw[arr] (l1) -- (ens); \draw[arr] (l1) -- (bnn);
   \draw[arr] (ft) -- (ftr); \draw[arr] (ens) -- (ensr); \draw[arr] (bnn) -- (bnnr);
   \draw[arr] (ensr) -- (lap); \draw[arr] (lap) -- (lapr);
   \draw[arr] (te) -- (test); \draw[arr] (l1.east) -- ++(1.2,0) |- (exp.west);
-  \draw[arr] (lapr) -- (paper); \draw[arr] (bnnr.south) -- (bnnr.south |- paper.north);
+  \draw[arr] (lapr) -- (paper); \draw[arr] (smor.west) -- ++(-0.35,0) |- ($(paper.south)+(0,-0.45)$) -- (paper.south); \draw[arr] (bnnr.south) -- (bnnr.south |- paper.north);
   \node[draw=gray!60, rounded corners=2pt, align=left, inner sep=4pt, anchor=north west, font=\scriptsize] at (3.4,-6.15)
    {\textbf{dihiggs/} (the package)\\
     \texttt{heftnet.py}: the model, $\sum_i C_i(\theta)a_i(m_{hh})$\\
@@ -115,8 +109,9 @@ consider more training points where the cross section is small.
     \texttt{finetune.py}: Huber-pull fine-tune\\
     \texttt{counts.py}: exact event counts\\
     \texttt{laplace.py}: Laplace approximations\\
+    \texttt{smooth.py}: the smooth $23\times80$ model\\
     \texttt{convert.py}, \texttt{templates/}: export};
-  \node[font=\scriptsize, gray!50!black, align=center] at (-0.5,-11.55)
+  \node[font=\scriptsize, gray!50!black, align=center] at (-0.5,-12.0)
    {\textcolor{datac!70!black}{$\blacksquare$} data \quad
     \textcolor{trainable!70!black}{$\blacksquare$} notebook (\texttt{code/})\quad
     \textcolor{physics!70!black}{$\blacksquare$} results (\texttt{code/runs/})};
@@ -127,7 +122,8 @@ consider more training points where the cross section is small.
 \noindent\textbf{Roadmap of the documents} (all in \file{docs/}; read top to bottom, or jump to the topic you need)
 \vspace{2pt}
 
-\noindent{\footnotesize
+\noindent{\scriptsize
+\renewcommand{\arraystretch}{0.92}
 \begin{tabular}{@{}p{0.30\textwidth}p{0.66\textwidth}@{}}
 \toprule
 \textbf{Start here} & \\
@@ -147,7 +143,13 @@ consider more training points where the cross section is small.
 \file{huber/huber_plan.pdf} & the Huber-pull fine-tune (the accuracy gain near threshold) \\
 \file{curriculum_plan.pdf}, \file{\_v2.pdf} & side study: curriculum learning \\
 \midrule
-\textbf{Uncertainty} & \\
+\textbf{The primary model} & \\
+\file{smooth/smooth_plan.pdf} & design of the smooth $23\times80$ model \\
+\file{smooth/smooth_results.pdf} & its results: accuracy, calibration, within-bin and edge tests \\
+\file{modelerror/model_error_note.pdf} & where the model error comes from (free-fit benchmark) \\
+\file{modelerror/new_error_model.pdf} & the cancellation-aware discrepancy \\
+\midrule
+\textbf{Uncertainty (network studies)} & \\
 \file{ensemble/ensemble_plan.pdf} & seeds and bootstrap ensembles; the reference-ensemble question \\
 \file{bnn/bnn_plan.pdf} & design of the Bayesian network and the HMC module \\
 \file{bnn/bnn_run1.pdf}--\file{run3.pdf} & the three HMC runs (incl.\ a primer on mixing) \\
@@ -155,9 +157,9 @@ consider more training points where the cross section is small.
 \file{bnn/laplace_explained.pdf} & the mixture of Laplace approximations, explained, with results \\
 \midrule
 \textbf{Paper} & \\
-\file{paper/appendix_draft.pdf} & draft JHEP appendix on the uncertainty \\
+\file{paper/appendix_draft.pdf} & draft JHEP appendix: the model and its uncertainty \\
 \file{paper/fig_*.pdf} & paper figures: 9 spectra (\file{fig_spectra_panel}); the 23 $a_i(m_{hh})$ (\file{fig_coefficients}) \\
-\file{paper/all_test_spectra.pdf} & all 1,000 test spectra against the model (51 pages) \\
+\file{paper/all_test_spectra.pdf} & all 1,000 test spectra against the smooth model (51 pages) \\
 \midrule
 \textbf{Practical} & \\
 \file{remote_gpu.pdf} & running the notebooks on the RTX 5090 (\texttt{tmux}, \texttt{nohup}) \\

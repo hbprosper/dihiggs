@@ -1,22 +1,24 @@
 % Stand-alone wrapper for reading the draft appendix. In the paper, use
 %   \appendix
-%   \input{appendix_uncertainty}
+%   \input{appendix_uncertainty}  (and \input{fig_spectra_caption} where the figure belongs)
 % and add appendix_refs.bib to the bibliography.
 \documentclass[11pt]{article}
 \usepackage[margin=1in]{geometry}
 \usepackage{amsmath,amssymb}
 \usepackage{graphicx}
+\usepackage{booktabs}
 \usepackage[numbers,sort&compress]{natbib}
 \usepackage{hyperref}
-\title{Draft appendix: uncertainty of the network model}
+\title{Draft appendix: the model of the $m_{hh}$ spectrum and its uncertainty}
 \author{}
-\date{1 November 2026}
+\date{1 November 2026 (v4: smooth model)}
 \begin{document}
 \maketitle
 \appendix
 \renewcommand{\thesection}{A}
 \section*{}\vspace{-3em}
 \input{appendix_uncertainty}
+\input{fig_spectra_caption}
 \bibliographystyle{unsrtnat}
 \bibliography{appendix_refs}
 \end{document}
