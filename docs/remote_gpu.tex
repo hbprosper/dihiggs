@@ -50,8 +50,8 @@
 \lstdefinestyle{sh}{language=bash, keywordstyle=\color{black}, commentstyle=\color{black}}
 
 \title{\textbf{Running the \texttt{dihiggs} notebooks on the RTX 5090}\\[4pt]
-\large A short manual: long runs that survive a broken connection}
-\date{October 30, 2026}
+\large A short manual: long runs that survive a broken connection,\\ with a \texttt{tmux} cheat sheet}
+\date{October 31, 2026 (first version October 30)}
 
 \begin{document}
 \maketitle
@@ -63,7 +63,7 @@ by \code{ssh}. This note explains which parts of the set-up live where, what sur
 closed browser tab or a broken connection, and how to start, watch, interrupt, resume and
 collect a run. Names in angle brackets, such as \code{<user>@<host>}, stand for your own
 values. The conda environment on the 5090 is \code{ml}; the repository is
-\file{~/Projects/dihiggs} there and \file{~/Projects/Tutorials/GitHub/dihiggs} on the Mac.
+\file{~/Projects/workbench/dihiggs} there and \file{~/Projects/Tutorials/GitHub/dihiggs} on the Mac.
 \end{abstract}
 
 \begin{keyidea}[The one rule]
@@ -128,6 +128,175 @@ the 5090 reboots & \textbf{stops} & \textbf{stops}\\
 the notebook. The computation and every file it writes (run folders, traces, figures) are
 unaffected.
 
+
+% ===========================================================================
+\section{Who owns a process: the rule behind everything}
+\label{sec:owner}
+
+Every process on the 5090 has a parent, and what happens to it when you disconnect depends
+on that parent. When an \code{ssh} session ends, normally or because the connection drops,
+the system sends its shell a \emph{hang-up} signal (SIGHUP), and the shell passes it on to
+the jobs it started, which then stop. A process survives if its parent does not hang up, or
+if it has been told to ignore the signal.
+
+\begin{center}
+\small
+\begin{tabular}{p{0.36\textwidth}p{0.30\textwidth}c}
+\toprule
+started from & belongs to & survives logout?\\
+\midrule
+a notebook in JupyterLab & the Jupyter server (in \code{tmux}) & yes\\
+a JupyterLab terminal & the Jupyter server (in \code{tmux}) & yes\\
+a login shell, \code{command \&} & your login session & \textbf{no}\\
+a login shell, \code{nohup command \&} & nobody who will hang up & yes\\
+a shell inside \code{tmux} & the \code{tmux} server & yes\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\noindent The browser page on the laptop is only a window onto JupyterLab, and the tunnel
+only the line to it: closing either touches nothing on the 5090.
+
+\paragraph{\code{nohup}.} \code{nohup bash run.sh > /dev/null 2>\&1 \&} starts the script in
+the background, immune to the hang-up signal. \code{> /dev/null 2>\&1} discards what the
+script prints to the terminal; if the script itself writes a log (with \code{tee}), nothing
+is lost. Use it for a one-off job from a login shell. The disadvantage: you cannot come
+back to the job's terminal later; you can only read its log.
+
+% ===========================================================================
+\section{The \texttt{tmux} programming model}
+\label{sec:tmux}
+
+\begin{figure}[h]
+\centering
+\resizebox{\textwidth}{!}{%
+\begin{tikzpicture}[
+  font=\small, >={Stealth[length=2.2mm]},
+  box/.style={draw, rounded corners=2pt, thick, align=center, inner sep=3pt,
+              minimum height=9mm, text width=27mm},
+  srv/.style={box, fill=trainable!10, draw=trainable!80!black, text width=30mm},
+  ses/.style={box, fill=physics!10, draw=physics!80!black},
+  win/.style={box, fill=gray!8, draw=gray!60!black, text width=25mm},
+  cli/.style={box, fill=datac!8, draw=datac!80!black, text width=24mm},
+]
+\node[srv] (server) at (0, 0) {\code{tmux} server\\\footnotesize one per user; keeps running};
+\node[ses] (s1) at (4.6, 1.3) {session \code{work}};
+\node[ses] (s2) at (4.6, -1.3) {session \code{ft}};
+\node[win] (w0) at (9.0, 2.2) {window 0: shell\\\footnotesize \code{jupyter lab}};
+\node[win] (w1) at (9.0, 0.6) {window 1: shell\\\footnotesize \code{bash runfinetune.sh}};
+\node[win] (w2) at (9.0, -1.3) {window 0: shell\\\footnotesize \code{python ...}};
+\node[cli] (c1) at (13.6, 1.4) {your terminal\\\footnotesize attached};
+\node[cli] (c2) at (13.6, -1.3) {(nobody)\\\footnotesize detached};
+\draw[->, thick] (server) -- (s1);
+\draw[->, thick] (server) -- (s2);
+\draw[->, thick] (s1) -- (w0);
+\draw[->, thick] (s1) -- (w1);
+\draw[->, thick] (s2) -- (w2);
+\draw[<->, thick, dashed] (c1) -- node[above, font=\footnotesize]{shows} (w1);
+\draw[thick, dotted] (c2) -- (w2);
+\end{tikzpicture}}
+\caption{\code{tmux}'s structure. The server owns sessions, sessions own windows, and each
+window runs a shell, in which your programs run. A terminal \emph{attached} to a session
+shows one of its windows; \emph{detaching} disconnects the terminal and leaves everything
+running.}
+\label{fig:tmux}
+\end{figure}
+
+\begin{itemize}
+  \item \textbf{The server} starts automatically with the first \code{tmux} command and runs
+    until its last session ends (or the machine reboots). It is the parent of every shell
+    in every window, which is why those shells, and the programs they run, survive your
+    logging out.
+  \item \textbf{A session} is a named group of windows, e.g.\ \code{work}. You attach to a
+    session from any terminal (an \code{ssh} login today, another one tomorrow) and detach
+    from it at will; it does not care which terminal, if any, is looking at it.
+  \item \textbf{A window} is one full-screen shell, numbered 0, 1, 2, \ldots and shown in the
+    status bar at the bottom. Use one window per job: e.g.\ window 0 for
+    \code{jupyter lab}, window 1 for a fine-tune, window 2 for watching logs.
+  \item \textbf{A pane} is a window split into parts, each with its own shell. Optional;
+    handy for watching \code{nvidia-smi} beside a log.
+  \item \textbf{The prefix key.} \code{tmux} commands typed \emph{inside} a session start with
+    the prefix \code{Ctrl-b}: press and release \code{Ctrl-b}, then the command key. For
+    example \code{Ctrl-b} then \code{d} detaches.
+  \item \textbf{Ending things.} \code{exit} in a window's shell closes that window (and the
+    session, when its last window closes). \code{Ctrl-c} stops the program running in the
+    current window, not \code{tmux}. Neither should ever be used in the window running
+    \code{jupyter lab} unless you mean to stop JupyterLab.
+\end{itemize}
+
+\begin{keyidea}[Adding a job to a session that is already running]
+Attach (\code{tmux attach -t work}), open a new window (\code{Ctrl-b c}), start the job
+there with no \code{\&} or \code{nohup} (the window's shell belongs to \code{tmux}), and detach
+(\code{Ctrl-b d}). The new job and everything already running continue.
+\end{keyidea}
+
+% ===========================================================================
+\section{\texttt{tmux} cheat sheet}
+\label{sec:cheat}
+
+\paragraph{Shell commands} (typed at a prompt, outside or inside \code{tmux}).
+\begin{center}
+\small
+\begin{tabular}{p{0.38\textwidth}p{0.55\textwidth}}
+\toprule
+command & what it does\\
+\midrule
+\code{tmux new -s work} & start a new session called \code{work} and attach to it\\
+\code{tmux ls} & list the sessions\\
+\code{tmux attach -t work} & attach to session \code{work}\\
+\code{tmux attach} & attach to the most recent session\\
+\code{tmux new-window -t work} & add a window to \code{work} without attaching\\
+\code{tmux kill-session -t work} & end a session and everything running in it\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\paragraph{Keys inside a session} (press \code{Ctrl-b}, release, then the key).
+\begin{center}
+\small
+\begin{tabular}{p{0.20\textwidth}p{0.73\textwidth}}
+\toprule
+\code{Ctrl-b}, then & what it does\\
+\midrule
+\code{d} & detach: leave everything running and return to the plain shell\\
+\code{c} & create a new window\\
+\code{n} / \code{p} & next / previous window\\
+\code{0} \ldots\ \code{9} & go to window 0 \ldots\ 9\\
+\code{w} & choose a window (or session) from a list\\
+\code{,} & rename the current window (e.g.\ \code{jupyter}, \code{finetune})\\
+\code{\%} / \code{"} & split the window into two panes, side by side / one above the other\\
+\code{o} & move to the next pane\\
+\code{x} & close the current pane (asks for confirmation)\\
+\code{[} & scroll mode: look back through the output with the arrow keys or
+  PageUp/PageDown; \code{q} leaves it\\
+\code{?} & list all key bindings\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\paragraph{A typical day.}
+\begin{lstlisting}[style=sh]
+ssh <user>@<host>
+tmux ls
+tmux attach -t work
+\end{lstlisting}
+\noindent Then \code{Ctrl-b w} to see the windows, \code{Ctrl-b c} for a new one, run the job,
+\code{Ctrl-b d} to leave. If \code{tmux ls} says there is no server, nothing is running in
+\code{tmux}: start with \code{tmux new -s work}.
+
+\begin{watch}[Three slips to avoid]
+\begin{enumerate}
+  \item Typing a new job into the window running \code{jupyter lab}: that window is busy, and
+    \code{Ctrl-c} there stops JupyterLab. Open a new window instead.
+  \item Starting \code{tmux} inside \code{tmux} (running \code{tmux new} from a window of an
+    attached session): \code{tmux} warns about nesting; use \code{Ctrl-b c} for another
+    window instead.
+  \item Closing the laptop's terminal \emph{without} detaching is harmless: the session
+    simply becomes detached. But \code{exit} typed in a window closes that window, and
+    whatever it was running stops.
+\end{enumerate}
+\end{watch}
+
 % ===========================================================================
 \section{Updating the code first}
 
@@ -137,7 +306,7 @@ cd ~/Projects/Tutorials/GitHub/dihiggs
 git push
 \end{lstlisting}
 \begin{lstlisting}[style=sh]
-cd ~/Projects/dihiggs
+cd ~/Projects/workbench/dihiggs
 git pull
 \end{lstlisting}
 Then restart any Jupyter kernel that imports \code{dihiggs}, so that it loads the new
@@ -155,18 +324,22 @@ line beginning \code{warm-up: step size only for iterations 1-75}.
 
 \begin{enumerate}
   \item Set the switches in the notebook (in JupyterLab, or any editor) and save it.
-  \item On the 5090, start a named \code{tmux} session and go to the code folder:
+  \item On the 5090, start a named \code{tmux} session (or, if one is already running,
+    attach to it and open a new window with \code{Ctrl-b c}; \cref{sec:tmux}) and go to the
+    code folder:
 \begin{lstlisting}[style=sh]
 tmux new -s bnn
 conda activate ml
-cd ~/Projects/dihiggs/code
+cd ~/Projects/workbench/dihiggs/code
 \end{lstlisting}
   \item Convert the notebook to a script, and run it:
 \begin{lstlisting}[style=sh]
-jupyter nbconvert --to script heft_train_bnn.ipynb
+jupyter nbconvert --to python heft_train_bnn.ipynb
 MPLBACKEND=Agg python heft_train_bnn.py 2>&1 | tee bnn_run.log
 \end{lstlisting}
-    \code{MPLBACKEND=Agg} makes matplotlib write figures to files instead of opening
+    \code{--to python} always writes a \file{.py} file (\code{--to script} takes the
+    extension from the notebook's metadata, and for a notebook never saved in Jupyter may
+    write a \file{.txt} file instead). \code{MPLBACKEND=Agg} makes matplotlib write figures to files instead of opening
     windows; \code{tee} shows the output and also keeps it in \file{bnn_run.log}.
   \item Detach: press \code{Ctrl-b}, then \code{d}. You may now log out.
   \item Later, reattach with
@@ -187,7 +360,7 @@ the notebook changes, or the script will run the old switches.
 \begin{lstlisting}[style=sh]
 tmux new -s jupyter
 conda activate ml
-cd ~/Projects/dihiggs
+cd ~/Projects/workbench/dihiggs
 jupyter lab --no-browser --port <port>
 \end{lstlisting}
     Note the URL with its token that it prints.
@@ -212,11 +385,11 @@ Jupyter server: if the server stops, so does the script. For long runs, Recipe A
 % ===========================================================================
 \section{Watching a run}
 
-From any \code{ssh} session on the 5090, in \file{~/Projects/dihiggs/code}: the
+From any \code{ssh} session on the 5090, in \file{~/Projects/workbench/dihiggs/code}: the
 script's output so far, the BNN trace (one line per iteration), the ensemble summary (one
 line per member), the GPU, and the running \code{tmux} sessions:
 \begin{lstlisting}[style=sh]
-cd ~/Projects/dihiggs/code
+cd ~/Projects/workbench/dihiggs/code
 tail -n 30 bnn_run.log
 tail -f runs/BNN_poisson/dihiggs_hmc_trace.csv
 cat runs/ENS_bootstrap/ensemble.csv
@@ -257,12 +430,12 @@ the ensemble notebook can train different members at once, with disjoint
 
 On the 5090, pack the run folder; on the Mac, copy it into \file{code/runs/}:
 \begin{lstlisting}[style=sh]
-cd ~/Projects/dihiggs/code/runs
+cd ~/Projects/workbench/dihiggs/code/runs
 tar czf BNN_poisson.tar.gz BNN_poisson
 \end{lstlisting}
 \begin{lstlisting}[style=sh]
 cd ~/Projects/Tutorials/GitHub/dihiggs/code/runs
-scp <user>@<host>:Projects/dihiggs/code/runs/BNN_poisson.tar.gz .
+scp <user>@<host>:Projects/workbench/dihiggs/code/runs/BNN_poisson.tar.gz .
 tar xzf BNN_poisson.tar.gz
 \end{lstlisting}
 
