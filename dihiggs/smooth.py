@@ -63,8 +63,27 @@ class SplineBasis:
         n_break = n_basis - k + 1                      # breakpoints incl. both ends
         u = np.linspace(0.0, np.sqrt(m_hi - m_lo), n_break)
         self.breaks = m_lo + u**2
-        # A B-spline knot vector repeats each end point k more times; then
-        # there are exactly n_basis cubic B-splines on [m_lo, m_hi].
+        # Knot vector for SciPy's BSpline.
+        #
+        # A cubic B-spline is a smooth bump made of 4 cubic pieces joined at
+        # 5 consecutive knots, with value, slope and curvature continuous at
+        # every join.  Four pieces is the fewest that can rise from zero and
+        # return to zero that smoothly, so each bump touches only 4 intervals
+        # and at any m only 4 of the bumps are non-zero (a sparse, banded fit).
+        #
+        # To get a full set of bumps right up to the ends we "clamp" the knot
+        # vector: repeat each end point k more times.
+        #   [m_lo]*k  is list repetition: [250.0]*3 -> [250.0, 250.0, 250.0]
+        #   np.r_[...] joins the three pieces into one array.
+        # Total knots = k + n_break + k = 44 for the defaults, and SciPy's rule
+        #   (number of B-splines) = (number of knots) - k - 1 = 40 = n_basis.
+        # With clamping the B-splines sum to 1 everywhere on [m_lo, m_hi], and
+        # only the first (last) one is non-zero at m_lo (m_hi).
+        #
+        # We do NOT use natural splines (zero curvature forced at the ends):
+        # the coefficient functions curve strongly near threshold and in the
+        # tail, so that constraint would bias them.  Smoothness comes instead
+        # from the second-difference penalty on the coefficients (P-splines).
         self.knots = np.r_[[m_lo] * k, self.breaks, [m_hi] * k]
         self.k = k
 
