@@ -182,3 +182,6 @@ clutter/
 # Run folders: previous-copy backups and text logs
 code/runs/**/*.previous
 code/runs/**/*.txt
+
+# Meeting slides are kept locally, not in the repo
+meetings/

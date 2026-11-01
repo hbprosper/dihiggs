@@ -1,0 +1,597 @@
+\input{smooth_preamble}
+\usepackage{array,tabularx}
+\newcommand{\bbeta}{\boldsymbol{\beta}}
+\newcommand{\bC}{\boldsymbol{C}}
+
+\title{\textbf{Has the smooth $23\times80$ model been done before?}\\[4pt]
+\large A review of prior work on the parametrisation of $d\sigma/dm_{hh}$ in HEFT,\\
+EFT morphing, machine-learned surrogates, and smooth coefficient functions}
+\author{P.~Bhat, N.~De~Filippis, K.\,F.~Johnson, H.\,B.~Prosper, R.~Starnes}
+\date{October 31, 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+\noindent
+Our primary model writes $d\sigma/dm_{hh} = \sum_{i=1}^{23} C_i(\theta)\,a_i(m_{hh})$, with
+each coefficient function $a_i$ a penalised cubic spline times a threshold factor, fitted to
+the \emph{bin integrals} of 3,989 POWHEG spectra with the exact Poisson variances. The
+smoothness of each $a_i$ is set by the evidence, the posterior is exactly Gaussian, and a
+discrepancy term grows with the degree of cancellation. Because the model is so simple, we
+asked whether it has been done before. We reviewed the di-Higgs EFT literature, ATLAS and
+CMS morphing and reweighting, machine-learned surrogates, and the statistics literature. For
+each work we record what was done, how the coefficients were obtained, and what it means for
+us. \textbf{Every ingredient has a precedent; we found no instance of the combination.} The
+23-term form and per-bin coefficients are the community standard; the per-bin weighted
+least-squares fit is, in substance, our free $23\times80$ fit. In statistics, our model is a
+\emph{varying-coefficient model} estimated as a \emph{penalised composite link model}. We
+found no work that makes the HEFT coefficients smooth functions of $m_{hh}$, fits them to bin
+integrals, or attaches a cancellation-dependent model error. We recommend presenting the
+model as established statistics applied to a problem where the field still uses per-bin
+tables, and offering the smooth $a_i(m)$ as a replacement for those tables.
+\end{abstract}
+
+\tableofcontents
+
+% ===========================================================================
+\section{Our model, for reference}
+\label{sec:ours}
+
+So that each prior work can be compared term by term, we restate the model.
+
+\begin{keyidea}[The smooth $23\times80$ model]
+\begin{align}
+\frac{d\sigma}{dm}(m;\theta) &= \sum_{i=1}^{23} C_i(\theta)\, a_i(m),
+  \qquad a_i(m) = \phi(m)\sum_{j=1}^{40}\beta_{ij}\,B_j(m),
+  \qquad \phi(m)=\sqrt{1-4m_h^2/m^2}, \label{eq:ours}\\
+\sigma_k(\theta) &= \int_{e_k}^{e_{k+1}}\frac{d\sigma}{dm}\,dm
+  = \sum_{i,j} C_i(\theta)\,\beta_{ij}\,I_{jk},
+  \qquad I_{jk} = \int_{e_k}^{e_{k+1}}\phi\,B_j\,dm. \label{eq:bins}
+\end{align}
+\begin{itemize}[leftmargin=12pt]
+  \item $C_i(\theta)$: the 23 monomials in $\theta=(\kappa_\lambda,c_t,c_{tt},c_{ggh},
+    c_{gghh})$ of the NLO HEFT cross section (\cref{eq:buchalla}). Known.
+  \item $B_j$: 40 cubic B-splines on 250--1500~GeV, knots uniform in $\sqrt{m-250}$.
+  \item Likelihood: Gaussian, with the Poisson variance $q\,\max(f,q)$ of the model
+    prediction $f$, iterated (IRLS) to remove the Neyman-$\chi^2$ bias; $q$ is each spectrum's
+    weight per event, recovered from the integer counts.
+  \item Prior: second differences of each $\beta_{i\cdot}$ Gaussian with precision
+    $\lambda_i$; the 23 $\lambda_i$ maximise the evidence.
+  \item Posterior: exactly Gaussian in the 920 $\beta_{ij}$; $\gamma\approx602$ effective
+    parameters.
+  \item Model error: $\varepsilon(m)\sum_i|C_ia_i|$ added in quadrature, with $\ln\varepsilon$
+    quadratic in $m$; pull s.d.\ 1.00 on 1,000 held-out spectra.
+\end{itemize}
+The \emph{free} $23\times80$ fit is the limit with one box function per bin and no prior:
+23 independent numbers per bin.
+\end{keyidea}
+
+\noindent
+The question for this review is therefore four questions:
+\begin{enumerate}[label=(Q\arabic*)]
+  \item Has anyone fitted the 23 coefficients \emph{per bin} from many runs? (the free fit)
+  \item Has anyone made them \emph{smooth functions} of $m_{hh}$?
+  \item Has anyone fitted smooth functions to \emph{bin integrals} of counts, with the
+    smoothness chosen from the data?
+  \item Has anyone modelled the \emph{error of the polynomial form itself}, and found it
+    related to cancellation?
+\end{enumerate}
+
+% ===========================================================================
+\section{How we searched}
+
+We ran web searches (October 2026) on arXiv, journal sites, CERN and Fermilab Indico, and
+the statistics literature. We then read the method sections of the key papers, and the
+appendices where the coefficients are defined. The searches covered: the NLO HEFT
+$gg\to hh$ coefficients and how they are obtained; HH benchmark and reweighting papers; EFT
+morphing in ATLAS and CMS; ``EFT-aware'' histograms; neural surrogates and simulation-based
+inference for di-Higgs; splines and Gaussian processes for EFT predictions; spline fits to
+histograms; composite link models; and varying-coefficient models.
+
+\begin{watch}[Limits of the search]
+A web search is not exhaustive. Experiment-internal notes are not public, and a smooth fit
+could be buried in a thesis or in the ancillary files of a paper. Before submission we should
+(i) run an INSPIRE ``cited by'' search on refs.~\cite{Buchalla2018,Heinrich2020,Alasfar2023},
+(ii) read the HH reweighting talks at the LHC Higgs WG (e.g.\ the 2025 WG4 meeting on
+``HH signal reweighting for EFT interpretations''), and (iii) ask the HH subgroup conveners
+directly whether anyone has tried a continuous $m_{hh}$ parametrisation.
+\end{watch}
+
+% ===========================================================================
+\section{Di-Higgs in HEFT: the 23-term form and its coefficients}
+\label{sec:hh}
+
+\subsection{Buchalla, Capozi, Celis, Heinrich, Scyboz (2018) \cite{Buchalla2018}}
+\label{sec:buchalla}
+
+\paragraph{What they did.} First NLO QCD calculation of $gg\to hh$ in the non-linear EFT
+(HEFT) with full top-mass dependence. They showed that the NLO cross section is a polynomial
+with 23 terms in the five couplings:
+\begin{align}
+\sigma^{\rm NLO} = {}&A_1c_t^4 + A_2c_{tt}^2 + A_3c_t^2c_{hhh}^2 + A_4c_{ggh}^2c_{hhh}^2
+ + A_5c_{gghh}^2 + A_6c_{tt}c_t^2 + A_7c_t^3c_{hhh} \nonumber\\
+ &+ A_8c_{tt}c_tc_{hhh} + A_9c_{tt}c_{ggh}c_{hhh} + A_{10}c_{tt}c_{gghh}
+ + A_{11}c_t^2c_{ggh}c_{hhh} + A_{12}c_t^2c_{gghh} \nonumber\\
+ &+ A_{13}c_tc_{hhh}^2c_{ggh} + A_{14}c_tc_{hhh}c_{gghh} + A_{15}c_{ggh}c_{hhh}c_{gghh}
+ \qquad\text{(the 15 LO terms)} \nonumber\\
+ &+ A_{16}c_t^3c_{ggh} + A_{17}c_tc_{tt}c_{ggh} + A_{18}c_tc_{ggh}^2c_{hhh}
+ + A_{19}c_tc_{ggh}c_{gghh} + A_{20}c_t^2c_{ggh}^2 \nonumber\\
+ &+ A_{21}c_{tt}c_{ggh}^2 + A_{22}c_{ggh}^3c_{hhh} + A_{23}c_{ggh}^2c_{gghh}.
+ \label{eq:buchalla}
+\end{align}
+The first 15 terms are the LO polynomial; the eight terms $A_{16}$--$A_{23}$, all
+containing $c_{ggh}$, first appear at NLO.
+
+\paragraph{How the coefficients were obtained.} For the total cross section the $A_i$ were
+obtained ``via projections and performing a fit'', and the two agree; only the projections
+are tabulated, with errors propagated from the input cross sections (correlations
+neglected). For $d\sigma/dm_{hh}$ (their appendix A.1): ``The coefficients have been
+determined by evaluating 23 differential cross sections, obtained by changing the values of
+the five coupling parameters. Then the system of 23 equations is solved to extract the value
+of each coefficient.'' Bins are 20~GeV wide, 40 bins with centres 250--1030~GeV, in fb/GeV,
+published as ancillary CSV files.
+
+\paragraph{What it means for us.}
+\begin{itemize}
+  \item \Cref{eq:buchalla} is our $\sum_i C_i(\theta)a_i$; the $C_i$ are these monomials.
+    Our ordering and normalisation should be stated relative to theirs in the paper.
+  \item Their differential coefficients come from a \emph{square} $23\times23$ solve per bin:
+    exact interpolation through 23 runs, with no redundancy. Any noise in the 23 runs goes
+    straight into the $A_i$, amplified by the condition number of the coupling matrix. Our
+    fit uses 3,989 runs, so it is heavily over-determined and the noise averages down.
+  \item The $m_{hh}$ dependence is piecewise constant in 20~GeV bins; nothing is smooth.
+  \item \textbf{(Q1)} partly; \textbf{(Q2)--(Q4)} no.
+\end{itemize}
+
+\subsection{Capozi and Heinrich (2020) \cite{Capozi2020}}
+
+\paragraph{What they did.} A shape analysis of the $m_{hh}$ distribution in HEFT: scans of
+the coupling space, clustering of shapes, and an autoencoder trained on $10^5$
+distributions.
+
+\paragraph{How the coefficients were obtained.} Taken from ref.~\cite{Buchalla2018}:
+``evaluated in bins of width 20~GeV from 250~GeV to 1050~GeV, i.e.\ for 40 bins'', provided as
+CSV tables in fb/GeV for 13, 14 and 27~TeV. They report: ``The median of the statistical
+uncertainties of the differential coefficients'' is at most 3\%, but above $\sim$650~GeV
+``some $A_i$ coefficients have uncertainties in the 20--30\% range.''
+
+\paragraph{What it means for us.} This is direct evidence that the per-bin tables are noisy
+in the tail. Our smooth $a_i$ share information across bins, and our posterior s.d.\ is
+2.9\% of the POWHEG noise. A side-by-side plot of our $a_i(m)$ with their tabulated
+$\tilde A_i$ at 13~TeV would make the point well (\cref{sec:actions}).
+\textbf{(Q2)--(Q4)} no.
+
+\subsection{Heinrich, Jones, Kerner, Scyboz (2020) \cite{Heinrich2020}}
+
+\paragraph{What they did.} Implemented the NLO HEFT calculation in the POWHEG-BOX:
+\code{ggHH} with anomalous couplings. This is the generator of our 3,989 spectra.
+
+\paragraph{How the coefficients enter.} The two-loop virtual amplitude is too slow to
+evaluate on the fly, so it is ``computed via a grid which encodes the dependence of the
+virtual two-loop amplitude on the kinematic invariants'' $\hat s,\hat t$. Grids are made for
+``23 linearly independent sets of couplings'' (6,715 points), and the code derives ``for each
+phase-space point, the coefficients $a_1,\dots,a_{23}$ by interpolation''. Once the user
+chooses the couplings, ``the 23 grids are combined into one'' in the first POWHEG stage. The
+Born and real-emission parts are evaluated exactly. They note that these $a_i$ are those of
+the Born--virtual interference, not the $A_i$ of the cross section. The grid uncertainty
+is ``below 2\% throughout the whole $m_{hh}$ range, except for the first bin'' (6\%, and
+12\% for benchmark 5), because the grid points were generated with SM couplings and the low
+$m_{hh}$ region is sparsely populated.
+
+\paragraph{What it means for us.}
+\begin{itemize}
+  \item They do interpolate smoothly, but in $(\hat s,\hat t)$ and for the amplitude, not for
+    the $m_{hh}$ spectrum. Different object, different purpose.
+  \item \textbf{A possible source of our model error.} Our spectra are generated with a
+    \emph{combined} grid, the real emission is computed exactly, and the POWHEG Sudakov
+    factor reweights the Born. The 23-term form holds exactly at fixed order, but each of
+    these steps can introduce small, coupling-dependent departures from it. Their 6--12\%
+    first-bin grid error is consistent with our larger residuals near threshold (deviance per
+    bin 1.57 below 555~GeV).
+  \item \textbf{(Q4)} indirectly: they quantify the grid's own error, not departures from the
+    polynomial.
+\end{itemize}
+
+\subsection{LHC Higgs WG note: Alasfar et al.\ (2023) \cite{Alasfar2023}}
+\label{sec:alasfar}
+
+\paragraph{What they did.} The community reference for EFT descriptions of HH production,
+in HEFT and SMEFT, with benchmark points, translation between the two, and a reweighting
+recipe for the experiments.
+
+\paragraph{How the coefficients were obtained.} With POWHEG-BOX-V2 \code{ggHH} at NLO,
+13~TeV, PDF4LHC15, $\mu_R=\mu_F=c\,m_{hh}/2$ with $c\in\{\tfrac12,1,2\}$. The inclusive
+\textbf{A} and differential $d\textbf{A}$ coefficients are obtained ``using a weighted least
+square fit'' to 63 simulations (62 HEFT points and the SM), following ref.~\cite{Buchalla2018}.
+The note defines
+\begin{equation}
+\frac{d\sigma}{dm_{hh}} = \mathrm{Poly}(\boldsymbol{c}, d\textbf{A}\,|\,m_{hh})
+  = \boldsymbol{c}^{\mathsf T}\cdot d\textbf{A}, \qquad
+w_{\rm HEFT} = \frac{\mathrm{Poly}(\boldsymbol{c}, d\textbf{A}\,|\,m_{hh})}
+  {\mathrm{Poly}(\boldsymbol{c}_{\rm SM}, d\textbf{A}\,|\,m_{hh})},
+\label{eq:alasfar}
+\end{equation}
+with bins of 20~GeV from 250 to 1050~GeV, then 1050--1200 and 1200--1400~GeV. Covariance
+matrices for $\textbf{A}$ and $d\textbf{A}$ are provided, with error-propagation formulas, and
+three coefficient sets for the scale variations.
+
+\paragraph{Caveats they state.}
+\begin{itemize}
+  \item Events above 1400~GeV take the weight of the last bin: ``not exactly correct, but it
+    is the best available estimate.''
+  \item ``The total cross section is better predicted by the inclusive \textbf{A}
+    coefficients'', so the inclusive set should fix the normalisation.
+  \item The $m_{hh}$ shapes close well; $p_T(h)$ shows discrepancies up to $\sim$40\%
+    (benchmark 1) and 10--20\% elsewhere, because only $m_{hh}$ is used.
+\end{itemize}
+
+\paragraph{What it means for us.}
+\begin{itemize}
+  \item \textbf{(Q1) yes.} This is our free $23\times80$ fit in substance: per-bin weighted
+    least squares over many POWHEG runs, with a per-bin covariance. We must cite it as the
+    baseline. Differences: we have 3,989 runs (63 times more), 15~GeV bins to 1455~GeV, the
+    exact Poisson variance, and IRLS rather than weights from the observed counts. (The note
+    does not define its weights; if they are the observed variances, the fit carries the
+    Neyman bias we found and corrected, \cref{sec:baker}.)
+  \item Their need for separate inclusive coefficients is a symptom of the binned
+    representation. A density model integrates to the total cross section at no extra cost.
+  \item The ``last bin'' rule above 1400~GeV and the coarse last two bins are exactly the
+    problems a smooth density solves inside its range. (Our own model should still not be
+    used beyond 1455~GeV.)
+  \item \textbf{(Q2)--(Q4)} no.
+\end{itemize}
+
+\subsection{Cadamuro, Ingebretsen Carlson, Sj\"olin (2025) \cite{Cadamuro2025}}
+
+\paragraph{What they did.} Extended the WG reweighting to several kinematic variables at 13
+and 13.6~TeV, in HEFT and SMEFT, combining several reference samples with a convex
+combination weighted by a distance measure.
+
+\paragraph{How the coefficients were obtained.} ``The coefficients of the polynomials,
+\textbf{A}, are derived by performing a fit to MC simulations at parton level'': 63 samples
+for HEFT and 70 for SMEFT, couplings drawn uniformly in $[-4\pi,4\pi]$. Again one polynomial
+per bin.
+
+\paragraph{Key findings.} Reweighting in $m_{hh}$ alone reproduces $p_T^h$ for constructive
+interference but not for destructive interference, with tail discrepancies of $\sim$20\%:
+they identify destructive interference as ``the main source for the discrepancies''. They
+also note that POWHEG's Sudakov form factor makes the coupling dependence of variables
+affected by jet radiation deviate from a strict polynomial.
+
+\paragraph{What it means for us.} This is the closest thing we found to \textbf{(Q4)}. Their
+observable and question differ (a second variable, not the $m_{hh}$ fit itself), but the
+physics is the same: where the 23 terms cancel, small departures from the polynomial become
+large relative errors. Our discrepancy $\varepsilon(m)\sum_i|C_ia_i|$ is a quantitative
+model of exactly that, and their Sudakov remark offers a mechanism. We should cite it when
+introducing the discrepancy.
+
+\subsection{Carvalho et al.\ (2016, 2017) \cite{Carvalho2016,Carvalho2016b,Carvalho2017}}
+
+\paragraph{What they did.} At LO (15 terms): cluster analysis of $m_{hh}$ and
+$|\cos\theta^*|$ shapes to choose the 12 benchmark points \cite{Carvalho2016}; an analytical
+parametrisation of the total cross section \cite{Carvalho2016b}; and a per-bin
+parametrisation for reinterpreting searches \cite{Carvalho2017}.
+
+\paragraph{How the coefficients were obtained.}
+\begin{itemize}
+  \item Total cross section \cite{Carvalho2016b}: ``The components of \textbf{A} are
+    extracted by maximizing the likelihood simultaneously for all the coefficients'', with
+    MINUIT, from 169--266 MadGraph points per energy (10,000 events per point, different
+    seeds). The per-point error is set \emph{a posteriori} to 0.03\%, chosen so that the
+    residuals have RMS $\approx 1$.
+  \item Differential \cite{Carvalho2017}: 59 bins in $m_{hh}$ (10~GeV up to 700~GeV, coarser
+    above) by 4 in $|\cos\theta^*|$, one coefficient set per bin, from a simultaneous fit with
+    MC statistical errors only (50,000 events per point, 13 million for the SM). They
+    note that with only 15 samples per bin the result ``would have a limited reliability'',
+    and use lower-dimensional sub-spaces to keep enough events per bin.
+\end{itemize}
+
+\paragraph{What it means for us.} The over-determined per-bin fit, \textbf{(Q1)}, goes back
+to 2017 at LO. Setting the error a posteriori so that residuals have unit RMS is a crude
+form of what our discrepancy term does properly. \textbf{(Q2), (Q3)} no.
+
+\begin{table}[h]
+\centering\small
+\begin{tabularx}{\linewidth}{@{}l l >{\raggedright\arraybackslash}X
+  >{\raggedright\arraybackslash}X@{}}
+\toprule
+Work & Order & $m_{hh}$ dependence & How coefficients are obtained \\
+\midrule
+Carvalho 2017 \cite{Carvalho2017} & LO, 15 & 59 $m_{hh}$ $\times$ 4 $\cos\theta^*$ bins
+  & simultaneous fit per bin; 50k events/point \\
+Buchalla 2018 \cite{Buchalla2018} & NLO, 23 & 40 bins of 20~GeV
+  & square $23\times23$ solve per bin from 23 runs \\
+Capozi 2020 \cite{Capozi2020} & NLO, 23 & as above & from \cite{Buchalla2018}; 20--30\%
+  errors above 650~GeV \\
+Heinrich 2020 \cite{Heinrich2020} & NLO & per phase-space point
+  & 23 amplitude grids in $(\hat s,\hat t)$, combined linearly \\
+Alasfar 2023 \cite{Alasfar2023} & NLO, 23 & 20~GeV to 1050, then 2 wide bins
+  & weighted least squares, 63 runs; covariances \\
+Cadamuro 2025 \cite{Cadamuro2025} & NLO, 23 & per bin, several variables
+  & fit to 63 (HEFT) / 70 (SMEFT) runs \\
+\midrule
+\textbf{This work} & NLO, 23 & \textbf{smooth} $a_i(m)$, 250--1455~GeV
+  & penalised Poisson fit to bin integrals of 3,989 runs; evidence; exact posterior \\
+\bottomrule
+\end{tabularx}
+\caption{How the coefficient functions are represented in the di-Higgs EFT literature.
+Before this work the $m_{hh}$ dependence is always piecewise constant.}
+\label{tab:hh}
+\end{table}
+
+% ===========================================================================
+\section{Morphing and reweighting in the experiments}
+\label{sec:morph}
+
+\subsection{ATLAS morphing \cite{ATLmorph} and \code{RooLagrangianMorphFunc} \cite{RooMorph}}
+
+\paragraph{What it is.} Any distribution at couplings $\theta$ is written as a linear
+combination of $N$ base distributions,
+\begin{equation}
+T(\theta) = \sum_{n=1}^{N} w_n(\theta)\,T(\theta_n),
+\end{equation}
+where $N$ equals the number of terms in the polynomial and the weights $w_n(\theta)$ follow
+from inverting the square matrix of monomials at the base points $\theta_n$. It is
+implemented in ROOT as \code{RooLagrangianMorphFunc}.
+
+\paragraph{What it means for us.} Same algebra as \cref{eq:ours}: the $a_i$ are linear
+combinations of base histograms. Morphing applies it to whole histograms, with exactly as many
+samples as unknowns, so it is an interpolation, not a fit. There is no smoothing in the
+observable, and the statistical errors of distant points are amplified by large weights.
+\textbf{(Q1)} no (square system); \textbf{(Q2)--(Q4)} no.
+
+\subsection{Overdetermined morphing: Belyaev, Konoplich, Prokofiev (2025) \cite{Belyaev2025}}
+
+\paragraph{What they did.} Use more base samples than unknowns and solve by least squares via
+a QR factorisation, $x = R^{-1}Q^{\mathsf T}y$, to stabilise morphing far from the base
+points. They note that standard morphing computes its coefficients without accounting for
+the uncertainties of the simulated cross sections; statistical power is tracked by the
+effective-weight and Kish ratios.
+
+\paragraph{What it means for us.} This is the morphing community arriving at the
+over-determined fit, \textbf{(Q1)}, in 2025. Again no smoothing across bins, and the least
+squares is unweighted. Our IRLS with Poisson variances is the statistically correct version
+of their step.
+
+\subsection{EFT-aware histograms in CMS \cite{Mohrman2023}}
+
+\paragraph{What it is.} In the CMS top-quark EFT analyses (\code{topcoffea}, \code{histEFT}),
+each simulated event carries a quadratic in the Wilson coefficients, fixed by MadGraph
+reweighting at enough points and solved with least squares. ``Instead of storing the sum of
+weight values, EFT histograms store the sum of the weight parameterizations.''
+
+\paragraph{What it means for us.} An event-level version of the per-bin polynomial; exact
+for the generated sample, piecewise constant in the observable. No smoothing; no model
+error. Not directly applicable to POWHEG NLO, where per-event reweighting to arbitrary
+couplings is not available in the same way.
+
+% ===========================================================================
+\section{Machine learning}
+\label{sec:ml}
+
+\subsection{Quadratic classifier: Chen, Glioti, Panico, Wulzer (2021) \cite{Chen2021}}
+
+\paragraph{What they did.} For one Wilson coefficient $c$, the ratio of EFT to SM
+differential cross sections is a quadratic in $c$ at every point $x$ of phase space. They
+build this in:
+\begin{equation}
+\hat r(x,c) = [1 + c\,n_\alpha(x)]^2 + [c\,n_\beta(x)]^2, \qquad
+f(x,c) = \frac{1}{1+\hat r(x,c)},
+\end{equation}
+with networks $n_\alpha, n_\beta$ trained as a classifier on EFT and SM events at several
+values of $c$. ``The quadratic dependence of the differential cross section on the EFT Wilson
+coefficients is built-in.'' They contrast it with the parametrised classifier, which takes $c$
+as an input and does not enforce the form.
+
+\paragraph{What it means for us.} This is the closest conceptual precedent for HEFTNet and
+for any $\sum_i C_i(\theta)a_i(x)$ model: a known polynomial in the couplings multiplying
+learned functions of the kinematics. The differences are the target (an unbinned likelihood
+ratio from events, versus binned cross sections), the representation (networks versus a
+linear spline basis), and the uncertainty (none quoted, versus an exact posterior). Our
+finding that, for $m_{hh}$, a 920-parameter linear model matches a network is a useful
+counterpoint. \textbf{(Q2)} yes in spirit (smooth functions of $x$ with built-in coupling
+dependence), but not for HH, not fitted to bins, and without uncertainties.
+
+\subsection{MadMiner \cite{Brehmer2018} and di-Higgs SBI \cite{Mastandrea2024}}
+
+\paragraph{What they did.} MadMiner uses morphing-aware likelihood-ratio estimators: the
+matrix element is ``a polynomial over chosen Wilson coefficients''. Mastandrea, Nachman and
+Plehn apply it to di-Higgs in SMEFT with three coefficients, ``a polynomial up to squared
+terms, resulting in 10 fit parameters'' and 10 morphing basis points, plus a parametrised
+classifier in which $c$ ``is promoted to a feature''. They note reweighting ``works well when
+the new parameter point is close to the original one''.
+
+\paragraph{What it means for us.} Unbinned inference, a different goal. Confirms that the
+polynomial structure is the standard way to carry coupling dependence; no smooth $m_{hh}$
+coefficients.
+
+\subsection{Learned loop amplitudes: Bahl, Braun, Heinrich, Plehn, Revelli (2026) \cite{Bahl2026}}
+
+\paragraph{What they did.} Neural surrogates for the one- and two-loop $gg\to hh$ amplitudes
+with full top-mass dependence, with calibrated uncertainties, identification of poorly
+described phase-space regions, and adaptive training.
+
+\paragraph{What it means for us.} Complementary: they emulate the amplitude (in
+$\hat s,\hat t$) for the SM, not the $m_{hh}$ spectrum across couplings. Their emphasis on
+calibrated surrogate uncertainties matches ours. A combination (EFT amplitude surrogates
+feeding our spectrum model) is a possible future direction.
+
+\paragraph{Gaussian-process emulators.} GP emulators are common in nuclear EFT (chiral EFT
+truncation errors) and cosmology, but we found none for the HH $m_{hh}$ spectrum over the
+five HEFT couplings.
+
+% ===========================================================================
+\section{Statistics: the model has a name}
+\label{sec:stats}
+
+\subsection{Varying-coefficient models: Hastie and Tibshirani (1993) \cite{HastieTibshirani1993}}
+
+\paragraph{What it is.} A regression in which the coefficients of known covariates are
+themselves smooth functions of another variable, the ``effect modifier'' $r$:
+\begin{equation}
+\eta = \beta_0(r) + \sum_i x_i\,\beta_i(r).
+\end{equation}
+The $\beta_i(r)$ are estimated with smoothing splines or, later, P-splines
+\cite{EilersMarx1996,EilersMarx2021}.
+
+\paragraph{The match.} Set $x_i = C_i(\theta)$, $\beta_i = a_i$, $r = m_{hh}$, and
+$\eta = d\sigma/dm$: \cref{eq:ours} \emph{is} a varying-coefficient model with 23 covariates,
+no intercept, and an identity link. This answers \textbf{(Q2)} at the level of statistical
+structure: smooth coefficient functions of a covariate are textbook.
+
+\subsection{Penalised composite link model: Eilers (2007) \cite{Eilers2007}, Rizzi, Gampe,
+Eilers (2015) \cite{Rizzi2015}}
+
+\paragraph{What it is.} Counts $y_k$ are observed in coarse groups (age groups, income
+brackets). The underlying fine-grained distribution $\gamma$ is smooth. The composite link
+model writes the expected counts as
+\begin{equation}
+\mu = \mathbf{C}\,\gamma, \qquad \gamma = \exp(\mathbf{B}\alpha), \qquad
+y_k \sim \mathrm{Poisson}(\mu_k),
+\end{equation}
+where the composition matrix $\mathbf{C}$ sums the fine grid into the observed groups and
+$\mathbf{B}$ is a B-spline basis. The penalised log-likelihood
+$\ell(\alpha) - \tfrac{\lambda}{2}\lVert D\alpha\rVert^2$ with a difference penalty $D$ is
+maximised by IRLS, and $\lambda$ is chosen by AIC or BIC. Rizzi et al.\ show it recovers
+smooth distributions from very coarse, open-ended groups; the R package \code{ungroup}
+implements it.
+
+\paragraph{The match.} Our $I_{jk}$ in \cref{eq:bins} is the composition matrix applied to the
+spline basis: the model is defined as a density and compared with data through its bin
+integrals. Our merged-bin test (fit 30~GeV bins, predict the 15~GeV split) is exactly the
+``ungrouping'' that PCLM was designed for. This answers \textbf{(Q3)}. Differences:
+\begin{itemize}
+  \item \textbf{Link.} PCLM uses a log link so the density is positive. Our $a_i$ change sign,
+    so we use the identity link, and the model is linear in $\bbeta$.
+  \item \textbf{Covariates.} PCLM smooths one density. We smooth 23 functions, combined with
+    known weights $C_i(\theta_s)$ that differ for each of the 3,989 spectra.
+  \item \textbf{Smoothing parameters.} AIC/BIC over one $\lambda$, versus 23 $\lambda_i$ by
+    maximising the evidence.
+  \item \textbf{Uncertainty.} Sandwich or Bayesian intervals for $\gamma$, versus the exact
+    posterior of the linear model.
+\end{itemize}
+
+\subsection{Older and related ideas}
+
+\begin{itemize}
+  \item \textbf{Histosplines} (Boneva, Kendall, Stefanov 1971) \cite{Boneva1971}: splines
+    whose integrals over each histogram bin equal the bin content. The first appearance of the
+    integral constraint, as interpolation rather than fitting.
+  \item \textbf{Evidence and REML for smoothing parameters}: MacKay \cite{MacKay1992} for
+    the Bayesian evidence; Wood \cite{Wood2011} for the REML/marginal-likelihood methods that
+    are now standard in generalised additive models (\code{mgcv}). Our 23 $\lambda_i$ follow
+    this route.
+  \item \textbf{P-splines in HEP}: Whitehorn, van Santen, Lafebre \cite{Whitehorn2013} fit
+    tensor-product penalised B-splines to IceCube photon tables of up to six dimensions, by
+    penalised least squares with one $\lambda$ per dimension (the paper does not choose them
+    automatically), with non-negativity and monotonicity where needed. It shows that spline
+    surrogates for large Monte Carlo tables are accepted practice in HEP.
+\end{itemize}
+
+\subsection{Poisson versus Neyman $\chi^2$: Baker and Cousins (1984) \cite{BakerCousins1984}}
+\label{sec:baker}
+
+Weighting a fit by the \emph{observed} counts biases it low; the likelihood with the
+\emph{predicted} variance, or the equivalent IRLS, removes the bias. This is why our fit
+iterates with $q\,\max(f,q)$. It is textbook, but the HH reweighting literature does not say
+which weights its least-squares fits use.
+
+% ===========================================================================
+\section{Synthesis}
+\label{sec:synth}
+
+\begin{table}[h]
+\centering\small
+\begin{tabularx}{\linewidth}{@{}>{\raggedright\arraybackslash}p{4.2cm}
+  >{\raggedright\arraybackslash}X >{\raggedright\arraybackslash}p{2.6cm}@{}}
+\toprule
+Ingredient & Closest prior work & Status \\
+\midrule
+23-term NLO HEFT form & Buchalla et al.\ \cite{Buchalla2018} & standard \\
+Per-bin coefficients from many runs (free fit) & Carvalho \cite{Carvalho2017}, Alasfar
+  \cite{Alasfar2023}, Belyaev \cite{Belyaev2025} & standard \\
+Smooth functions of $x$ times known polynomial in couplings
+  & Chen et al.\ \cite{Chen2021}; VCM \cite{HastieTibshirani1993} & known, not for HH \\
+Spline density fitted to bin integrals of counts & PCLM \cite{Eilers2007,Rizzi2015};
+  histospline \cite{Boneva1971} & known, not in HEP EFT \\
+Smoothing parameters by evidence & MacKay \cite{MacKay1992}, Wood \cite{Wood2011}
+  & standard in statistics \\
+Exact Poisson variances from integer counts; IRLS & Baker--Cousins \cite{BakerCousins1984}
+  & standard idea; count recovery is ours \\
+Threshold factor $\phi(m)$ & phase-space $\beta$ factor & physics; trivial \\
+Model error $\propto$ cancellation & Cadamuro et al.\ \cite{Cadamuro2025} (qualitative)
+  & \textbf{not found} \\
+Within-bin validation (merged-bin test) & PCLM ungrouping & \textbf{not found in HEP} \\
+\textbf{All of the above, for $d\sigma/dm_{hh}$} & --- & \textbf{not found} \\
+\bottomrule
+\end{tabularx}
+\caption{Each ingredient of the smooth model and its closest precedent.}
+\label{tab:synth}
+\end{table}
+
+\begin{keyidea}[What is new]
+Our model is a \textbf{varying-coefficient penalised composite link model}: the
+varying-coefficient structure supplies $\sum_iC_i(\theta)a_i(m)$, the composite link supplies
+the bin integrals. We found neither the combination in statistics nor any smooth
+parametrisation of the HEFT coefficients in physics. Specific to this work:
+\begin{enumerate}
+  \item continuous $a_i(m_{hh})$ for the 23 NLO HEFT terms, with the threshold factor,
+    fitted jointly to $\sim$4,000 POWHEG spectra;
+  \item a likelihood on the \emph{integral} of the density over each bin, with the exact
+    Poisson variances recovered from the integer event counts;
+  \item 23 smoothness strengths from the evidence and an exact Gaussian posterior for every
+    $a_i(m)$ and every prediction;
+  \item a calibrated model error that scales with the cancellation $\sum_i|C_ia_i|$;
+  \item a test of within-bin accuracy that a per-bin table cannot pass by construction.
+\end{enumerate}
+\end{keyidea}
+
+\begin{watch}[What a referee might say, and our answer]
+\begin{description}[leftmargin=0pt,style=nextline]
+  \item[``This is just the WG per-bin fit with smoothing.''] Yes, and that is the point:
+    the per-bin fit is the floor for any 23-term model, and we reach it with half the parameters
+    (a third of the effective ones), continuous predictions, and a demonstrated gain inside bins and in the tail.
+  \item[``Why not a network?''] We tried; an ensemble of HEFTNets reaches the same floor,
+    but its uncertainty requires an ensemble or a Laplace mixture, and it is unreliable
+    between bin centres (spread up to 20--90 times larger below 400~GeV).
+  \item[``The discrepancy term is ad hoc.''] It has three parameters, is fitted on training
+    spectra and calibrated on held-out ones (pull s.d.\ 1.00 in every cancellation fifth),
+    and its form is motivated by the destructive-interference effect seen independently in
+    ref.~\cite{Cadamuro2025}.
+\end{description}
+\end{watch}
+
+% ===========================================================================
+\section{Recommendations and actions}
+\label{sec:actions}
+
+\paragraph{For the paper.}
+\begin{enumerate}
+  \item In the introduction, cite \cite{Buchalla2018,Heinrich2020,Alasfar2023} as the
+    per-bin baseline and say that the free $23\times80$ fit reproduces that approach with a
+    much larger sample.
+  \item Name the model: ``a varying-coefficient model \cite{HastieTibshirani1993} estimated
+    as a penalised composite link model \cite{Eilers2007,Rizzi2015}''.
+  \item Cite \cite{Chen2021,Brehmer2018} when motivating HEFTNet: polynomial in the
+    couplings, learned functions of the kinematics.
+  \item Cite \cite{Cadamuro2025} and \cite{Heinrich2020} (grid, Sudakov) when introducing the
+    cancellation-dependent discrepancy.
+  \item Offer the smooth $a_i(m)$ and their covariance as a drop-in replacement for the
+    per-bin $d\textbf{A}$ tables of \cite{Alasfar2023}: same \cref{eq:alasfar}, evaluated at
+    any $m_{hh}$ or integrated over any binning.
+\end{enumerate}
+
+\paragraph{Concrete follow-ups.}
+\begin{enumerate}
+  \item Download the 13~TeV ancillary CSV of \cite{Buchalla2018} (and the WG $d\textbf{A}$
+    files if public) and overlay their $\tilde A_i$ on our $a_i(m)$ with bands, after
+    matching conventions. Agreement validates both; differences in the tail show the gain.
+  \item Ask whether the WG fit weights are observed or predicted variances.
+  \item INSPIRE ``cited by'' search and a note to the HH conveners (see the box in section 2).
+  \item Merge the entries of \file{docs/smooth/literature_refs.bib} into
+    \file{docs/paper/appendix_refs.bib}.
+\end{enumerate}
+
+\input{bib_block}
+\end{document}

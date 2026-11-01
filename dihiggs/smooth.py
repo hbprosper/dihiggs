@@ -38,7 +38,7 @@
 import numpy as np
 from scipy.interpolate import BSpline
 
-__all__ = ['SplineBasis', 'SmoothHEFT']
+__all__ = ['SplineBasis', 'SmoothHEFT', 'heft_monomials']
 
 M_H = 125.0            # Higgs boson mass in GeV; the threshold is 2 M_H
 
@@ -365,3 +365,92 @@ class SmoothHEFT:
         return {'beta': self.beta, 'lam': self.lam, 'H': self.H,
                 'breaks': self.basis.breaks, 'threshold': self.basis.threshold,
                 'm_lo': self.basis.m_lo, 'm_hi': self.basis.m_hi}
+
+    # ------------------------------------------------------------------------
+    # Using a saved model
+    # ------------------------------------------------------------------------
+    @classmethod
+    def load(cls, filename):
+        '''
+        Rebuild a fitted model from the file written by heft_smooth.ipynb
+        (runs/SMOOTH_<tag>/smooth_model.npz). No data are needed.
+
+            model = SmoothHEFT.load('runs/SMOOTH_J40/smooth_model.npz')
+        '''
+        d = np.load(filename)
+        basis = SplineBasis(n_basis=len(d['breaks']) + 2, m_lo=float(d['m_lo']),
+                            m_hi=float(d['m_hi']), threshold=bool(d['threshold']))
+        if not np.allclose(basis.breaks, d['breaks']):
+            raise ValueError('SmoothHEFT.load: the stored breakpoints do not match')
+        model = cls(basis)
+        model.beta, model.lam, model.H = d['beta'], d['lam'], d['H']
+        model.L = np.linalg.cholesky(model.H)
+        model._Hinv = None
+        # the discrepancy: ln epsilon is a quadratic in u = (m - 855 GeV)/600 GeV
+        model.eps_poly = d['eps_poly'] if 'eps_poly' in d else None
+        return model
+
+    def epsilon(self, m):
+        '''The discrepancy coefficient epsilon(m) (a fraction), at the masses m.'''
+        if getattr(self, 'eps_poly', None) is None:
+            raise ValueError('this model has no discrepancy stored')
+        return np.exp(np.polyval(self.eps_poly, (np.asarray(m, np.float64) - 855.0) / 600.0))
+
+    def spectrum(self, theta, edges=255.0 + 15.0 * np.arange(81), discrepancy=True):
+        '''
+        The cross section (pb) in the bins [edges[k], edges[k+1]] for each HEFT
+        point theta = (klambda, ct, ctt, cggh, cgghh), with its uncertainty.
+
+        Arguments
+        ---------
+        theta       : array [5] or [N, 5].
+        edges       : bin edges in GeV, within 250-1455 GeV (default: the 80
+                      bins of 15 GeV from 255 to 1455 GeV).
+        discrepancy : include the model-error term in the uncertainty.
+
+        Returns (sigma, sd), each of shape [N, n_bins]: the posterior mean and
+        the standard deviation of the model (fit uncertainty, and if asked the
+        discrepancy). The Poisson noise of a POWHEG sample is NOT included.
+        '''
+        theta = np.atleast_2d(np.asarray(theta, np.float64))
+        edges = np.asarray(edges, np.float64)
+        N, K = len(theta), len(edges) - 1
+        C = heft_monomials(theta)                               # [N, 23]
+        I = self.basis.integrals(edges)                         # [K, J]
+        # every (point, bin) pair is one row: C repeated K times, I tiled N times
+        f, v = self.predict(np.repeat(C, K, axis=0), np.tile(I, (N, 1)))
+        f, v = f.reshape(N, K), v.reshape(N, K)
+        if discrepancy:
+            A = self.coefficient_integrals(I)                   # [K, 23]
+            S = np.abs(C[:, None, :] * A[None]).sum(2)          # sum_i |C_i a_ik|
+            v = v + (self.epsilon(0.5 * (edges[:-1] + edges[1:]))[None] * S)**2
+        return f, np.sqrt(v)
+
+    def dsigma_dm(self, theta, m):
+        '''
+        The density d sigma / dm (pb/GeV) at the masses m for each HEFT point:
+        arrays [N, len(m)] of the posterior mean and its standard deviation
+        (fit uncertainty only).
+        '''
+        theta = np.atleast_2d(np.asarray(theta, np.float64))
+        m = np.atleast_1d(np.asarray(m, np.float64))
+        C = heft_monomials(theta)
+        f, v = self.density(np.repeat(C, len(m), axis=0), np.tile(m, len(C)))
+        return f.reshape(len(C), len(m)), np.sqrt(v).reshape(len(C), len(m))
+
+
+def heft_monomials(theta):
+    '''
+    The 23 monomials C_i(theta) of HEFTNet, in the same order, for
+    theta = (klambda, ct, ctt, cggh, cgghh): an array [N, 23].
+    (Kept identical to heftnet.HEFTNet.forward; code/smooth_toy.py and
+    heft_smooth.ipynb use HEFTNet itself.)
+    '''
+    t = np.atleast_2d(np.asarray(theta, np.float64))
+    kl, ct, ctt, cggh, cgghh = t.T
+    return np.column_stack((
+        ct**4, ctt**2, ct**2*kl**2, cggh**2*kl**2, cgghh**2,
+        ctt*ct**2, kl*ct**3, ct*kl*ctt, cggh*kl*ctt, ctt*cgghh,
+        cggh*kl*ct**2, cgghh*ct**2, kl**2*cggh*ct, cgghh*ct*kl, cggh*cgghh*kl,
+        ct**3*cggh, ct*ctt*cggh, ct*cggh**2*kl, ct*cggh*cgghh, ct**2*cggh**2,
+        ctt*cggh**2, cggh**3*kl, cggh**2*cgghh))
