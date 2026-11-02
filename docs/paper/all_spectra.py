@@ -25,9 +25,9 @@ with PdfPages('all_test_spectra.pdf') as pdf:
            'Light band: total ($\\pm1\\sigma$), including the discrepancy $\\varepsilon(m_{hh})\\,\\sum_i|C_i\\,a_i|$.\n\n'
            'Each panel gives, above it, the test-spectrum index (row of the test file, from 0) and the HEFT\n'
            r'parameters ($\kappa_\lambda$, $c_t$, $c_{tt}$, $c_{ggh}$, $c_{gghh}$); inside, the total cross section, POWHEG (model),'
-           '\nand the Poisson deviance per bin (1 for a perfect model with Poisson noise only).')
+           '\nand the likelihood-ratio statistic $-2\\ln\\lambda$ per bin, $\\lambda$ = Poisson$(n;\\mu)$/Poisson$(n;n)$ (1 for a perfect model with Poisson noise only).')
     fig.text(0.1, 0.55, txt, fontsize=10.5, va='bottom', linespacing=1.5)
-    fig.text(0.1, 0.48, f'Median deviance per bin = {np.median(devN):.3f};   spectra above 2: {np.sum(devN > 2)};   above 5: {np.sum(devN > 5)}.', fontsize=10.5)
+    fig.text(0.1, 0.48, f'Median $-2\\ln\\lambda$ per bin = {np.median(devN):.3f};   spectra above 2: {np.sum(devN > 2)};   above 5: {np.sum(devN > 5)}.', fontsize=10.5)
     fig.text(0.1, 0.06, 'P. Bhat (Fermilab), N. De Filippis (Politecnico di Bari), K.F. Johnson, H.B. Prosper, R. Starnes (Florida State University)', fontsize=8.5)
     pdf.savefig(fig); plt.close(fig)
     for page in range(npages):
@@ -46,7 +46,7 @@ with PdfPages('all_test_spectra.pdf') as pdf:
             ax.set_xticks([400, 800, 1200]); ax.ticklabel_format(axis='y', style='plain', useOffset=False); ax.tick_params(labelsize=7)
             t_ = th[s]
             ax.set_title(f'#{s}:  {t_[0]:.2f}, {t_[1]:.2f}, {t_[2]:.2f}, {t_[3]:.2f}, {t_[4]:.2f}', fontsize=7, pad=2.5)
-            ax.text(0.97, 0.95, f'$\\sigma$ = {fmt(tot[s])} ({fmt(ftot[s])})\ndeviance/$N$ = {devN[s]:.2f}', transform=ax.transAxes,
+            ax.text(0.97, 0.95, f'$\\sigma$ = {fmt(tot[s])} ({fmt(ftot[s])})\n$\\langle -2\\ln\\lambda\\rangle$ = {devN[s]:.2f}', transform=ax.transAxes,
                     ha='right', va='top', fontsize=7, linespacing=1.3, color='#B03A2E' if devN[s] > 2 else 'k')
         for ax in axes.flat[len(idx):]: ax.axis('off')
         for ax in axes[-1]: ax.set_xlabel(r'$m_{hh}$ [GeV]', fontsize=8)

@@ -125,7 +125,7 @@ correlation (over about 5--8 bins near threshold) must be taken into account.
 \small
 \begin{tabular}{lccc}
 \toprule
- & \multicolumn{2}{c}{deviance per bin} & median \\
+ & \multicolumn{2}{c}{$-2\ln\lambda$ per bin} & median \\
  & 255--555 GeV & $>555$ GeV & per spectrum \\
 \midrule
 smooth model                            & 1.566 & 1.100 & 1.078 \\
@@ -133,8 +133,8 @@ free fit per bin (benchmark)            & 1.559 & 1.105 & 1.075 \\
 network ensemble (cross-check)          & 1.561 & 1.121 & 1.085 \\
 \bottomrule
 \end{tabular}
-\caption{Accuracy on the 1,000 test spectra: the mean Poisson deviance per bin (1 for a perfect
-model with Poisson noise), and its median per spectrum. The network was trained with
+\caption{Accuracy on the 1,000 test spectra: the mean likelihood-ratio statistic $-2\ln\lambda$ per bin
+(1 for a perfect model with Poisson noise), and its median per spectrum. The network was trained with
 observed-count weights (appendix~\ref{app:fit}), which costs it above 555~GeV.}
 \label{tab:app:accuracy}
 \end{table}
@@ -142,12 +142,24 @@ observed-count weights (appendix~\ref{app:fit}), which costs it above 555~GeV.}
 \begin{figure}[t]
 \centering
 \includegraphics[width=0.7\textwidth]{fig_app_accuracy.pdf}
-\caption{Mean Poisson deviance per bin on the test spectra as a function of $m_{hh}$.}
+\caption{Mean likelihood-ratio statistic $-2\ln\lambda$ per bin on the test spectra as a function
+of $m_{hh}$; 1 for a perfect model with Poisson noise.}
 \label{fig:app:accuracy}
 \end{figure}
 
-\paragraph{Accuracy.} The smooth model reaches the floor set by the free fit: on the 1,000 test
-spectra the mean deviance per bin is 1.566 below and 1.100 above 555~GeV
+\paragraph{Accuracy.} We measure the accuracy of the prediction in each bin by the
+likelihood-ratio statistic
+\begin{equation}
+-2\ln\lambda = -2\ln\frac{\mathrm{Poisson}(n;\mu)}{\mathrm{Poisson}(n;n)}
+ = 2\left[\mu - n + n\ln\frac{n}{\mu}\right],
+\label{eq:app:lr}
+\end{equation}
+where $n = t/q$ is the POWHEG event count and $\mu = f/q$ the model's prediction. If POWHEG
+were exactly the model plus Poisson noise, $-2\ln\lambda$ would follow a $\chi^2$ distribution
+with one degree of freedom (Wilks' theorem), with mean 1; no parameter is adjusted to the test
+spectra. (Statisticians call this quantity the Poisson deviance.) The smooth model reaches the
+floor set by the free fit: on the 1,000 test spectra the mean of $-2\ln\lambda$ per bin is 1.566
+below and 1.100 above 555~GeV
 (table~\ref{tab:app:accuracy}, figure~\ref{fig:app:accuracy}). The excess over 1 is the departure
 discussed in appendix~\ref{app:disc}; it is largest just above threshold and for the spectra with
 the strongest cancellation. Figure~\ref{fig:spectra} shows examples.

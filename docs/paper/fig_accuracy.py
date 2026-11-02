@@ -1,4 +1,4 @@
-# Mean Poisson deviance per bin on the test spectra: smooth model, free per-bin fit, network ensemble
+# Mean likelihood-ratio statistic -2 ln lambda per bin (the Poisson deviance) on the test spectra: smooth model, free per-bin fit, network ensemble
 import numpy as np, glob, matplotlib.pyplot as plt
 exec(open('smooth_common.py').read())
 plt.rcParams.update({"text.usetex": True, "font.family": "serif", "font.size": 10, 'xtick.direction': 'in', 'ytick.direction': 'in', 'xtick.top': True, 'ytick.right': True})
@@ -21,7 +21,7 @@ fig, ax = plt.subplots(figsize=(6.2, 3.8))
 for fp, lab, c, ls in [(f, r'smooth $23\times80$ model', '#1B4F8A', '-'), (f_free, 'free fit per bin', '#C0392B', '--'), (f_net, 'network ensemble (cross-check)', 'gray', ':')]:
     ax.stairs(np.nanmean(dev(fp), 0), E, color=c, ls=ls, lw=1.2, label=lab)
 ax.axhline(1, color='k', lw=0.6); ax.set_xlim(255, 1455); ax.set_ylim(0.8, 2.4)
-ax.set_xlabel(r'$m_{hh}$ [GeV]'); ax.set_ylabel('mean Poisson deviance per bin'); ax.legend(frameon=False, fontsize=9)
+ax.set_xlabel(r'$m_{hh}$ [GeV]'); ax.set_ylabel(r'mean $-2\ln\lambda$ per bin'); ax.legend(frameon=False, fontsize=9)
 fig.tight_layout(); fig.savefig('fig_app_accuracy.pdf')
 for fp, lab in [(f, 'smooth'), (f_free, 'free'), (f_net, 'network')]:
     dv = dev(fp); print(lab, 'thr %.3f rest %.3f median/N %.3f  >5: %d' % (np.nanmean(dv[:, :20]), np.nanmean(dv[:, 20:]), np.median(np.nanmean(dv, 1)), np.sum(np.nanmean(dv, 1) > 5)))
