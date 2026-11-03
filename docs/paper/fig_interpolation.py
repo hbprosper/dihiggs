@@ -1,23 +1,13 @@
 # Network predictions interpolated between the bin centres, against the smooth model, for three test spectra
-import glob, numpy as np, torch, matplotlib.pyplot as plt
-from dihiggs import heftnet as NN
-from dihiggs.smooth import SmoothHEFT
+import numpy as np, matplotlib.pyplot as plt
 plt.rcParams.update({"text.usetex": True, "font.family": "serif", "font.size": 11,
                      'xtick.direction': 'in', 'ytick.direction': 'in', 'xtick.top': True, 'ytick.right': True})
-P = np.load('/home/claude/paper2/smooth_test.npz')
-T, qt, th = P['T'], P['qt'], P['th']
+exec(open('smooth_common.py').read())                      # test spectra, paths, network helpers
+th = D['th']
 SPEC = [786, 878, 675]                                       # the median-deviance row of the 9-panel figure
 mg = np.arange(255.0, 1455.01, 0.5)                          # fine grid in m_hh (GeV)
-x = (mg - 255.0) / 1500.0                                    # HEFTNet's input variable
-members = sorted(glob.glob('/home/claude/ana5/ENS_bootstrap_huber_d2/member_*/dihiggs_params.pth'))
-net = np.zeros((len(members), len(SPEC), len(mg)))
-for a, f in enumerate(members):
-    m = NN.HEFTNet(); m.load(f); m.eval()
-    for b, s in enumerate(SPEC):
-        X = torch.tensor(np.column_stack([x, np.tile(th[s], (len(mg), 1))]), dtype=torch.float32)
-        with torch.no_grad():
-            net[a, b] = m(X).double().numpy() / 15.0         # per 15 GeV -> per GeV
-sm = SmoothHEFT.load('/home/claude/work/code/runs/SMOOTH_J40/smooth_model.npz')
+net = network_density(th[SPEC], mg) / 15.0                  # 20 networks; per 15 GeV -> per GeV
+sm = SmoothHEFT.load(MODEL_FILE)
 dens, dsd = sm.dsigma_dm(th[SPEC], mg)
 cen = 262.5 + 15 * np.arange(80); edges = 255 + 15 * np.arange(81)
 np.savez('interp.npz', mg=mg, net=net, dens=dens, dsd=dsd)
@@ -30,7 +20,7 @@ names = [r'\kappa_\lambda', r'c_t', r'c_{tt}', r'c_{ggh}', r'c_{gghh}']
 for b, s in enumerate(SPEC):
     ax = fig.add_subplot(gs[0, b]); rx = fig.add_subplot(gs[1, b], sharex=ax)
     k = 1e3                                                  # pb -> fb
-    for a in range(len(members)):
+    for a in range(len(net)):
         ax.plot(mg[sel], k * net[a, b, sel], color='#C0392B', lw=0.45, alpha=0.45, label='20 networks' if a == 0 else None)
     nm = net[:, b].mean(0); ns = net[:, b].std(0, ddof=1)
     ax.plot(mg[sel], k * nm[sel], color='#C0392B', lw=1.4, ls='--', label='network mean')

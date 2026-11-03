@@ -2,8 +2,8 @@
 import numpy as np, glob, matplotlib.pyplot as plt
 exec(open('smooth_common.py').read())
 plt.rcParams.update({"text.usetex": True, "font.family": "serif", "font.size": 10, 'xtick.direction': 'in', 'ytick.direction': 'in', 'xtick.top': True, 'ytick.right': True})
-d = np.load('/home/claude/sm/inputs.npz'); nS = len(T)
-C, b, t, q = d['C_fit'], d['b_fit'], d['t_fit'], d['q_fit']; Ct3 = d['C_t'].reshape(nS, 80, 23)
+Ctest = D['C']                                        # C_i(theta) of the test spectra [nS, 23]
+C, b, t, q = training_rows()                          # the rows the smooth model was fitted to
 A = np.zeros((80, 23))
 for k in range(80):                                   # free per-bin fit, Poisson weights (iterated)
     s = b == k; Ck, tk, qk = C[s], t[s], q[s]; var = qk * (tk + qk)
@@ -11,8 +11,8 @@ for k in range(80):                                   # free per-bin fit, Poisso
         w = 1 / var; a = np.linalg.solve(Ck.T @ (w[:, None] * Ck), Ck.T @ (w * tk)); fk = Ck @ a
         var = np.sqrt(var * np.where(fk > 0, qk * np.maximum(fk, qk), qk * (tk + qk)))
     A[k] = a
-f_free = np.einsum('ski,ki->sk', Ct3, A)
-f_net = np.mean([np.load(x)['mu_test'] for x in glob.glob('/home/claude/work/code/runs/LAPLACE_ENS_bootstrap_huber_d2_1/member_*/predictions.npz')], 0).reshape(nS, 80)
+f_free = Ctest @ A.T                                  # [nS, 80]
+f_net = network_bins(D['th']).mean(0)                 # mean of the 20 fine-tuned bootstrap networks [nS, 80]
 def dev(fp):
     mu_ = fp / qt[:, None]; p_ = mu_ > 0
     return np.where(p_, 2 * (mu_ - n + np.where(n > 0, n * np.log(np.where(n > 0, n, 1) / np.where(p_, mu_, 1)), 0)), np.nan)

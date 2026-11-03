@@ -10,6 +10,9 @@
 \usetikzlibrary{positioning,arrows.meta,calc,fit,backgrounds,shapes.geometric}
 \usepackage[compat=1.1.0]{tikz-feynman}
 \usepackage[most]{tcolorbox}
+\usepackage{enumitem}
+\usepackage[section]{placeins}   % keep figures within their section
+\usepackage{listings}
 \usepackage[font=small,labelfont=bf]{caption}
 \usepackage{hyperref}
 \hypersetup{colorlinks=true,linkcolor=MidnightBlue,citecolor=MidnightBlue,urlcolor=MidnightBlue}
@@ -17,6 +20,7 @@
 \urlstyle{tt}
 \def\UrlBreaks{\do\_\do/\do.}
 \newcommand{\file}[1]{\nolinkurl{#1}}
+\graphicspath{{model/}{paper/}{./}}
 
 % ---------------------------------------------------------------------------
 \newcommand{\mhh}{m_{hh}}
@@ -26,38 +30,87 @@
 \newcommand{\cggh}{c_{ggh}}
 \newcommand{\cgghh}{c_{gghh}}
 \newcommand{\bc}{\boldsymbol{c}}
+\newcommand{\bC}{\boldsymbol{C}}
 \newcommand{\ba}{\boldsymbol{a}}
 \newcommand{\bv}{\boldsymbol{v}}
+\newcommand{\bbeta}{\boldsymbol{\beta}}
 \newcommand{\code}[1]{\texttt{#1}}
+\newcommand{\sfit}{s_{\text{fit}}}
+\newcommand{\snoise}{s_{\text{noise}}}
 
 \definecolor{trainable}{HTML}{1B6CA8}
 \definecolor{physics}{HTML}{2E933C}
 \definecolor{datac}{HTML}{7B4EA3}
+\definecolor{warn}{HTML}{C0392B}
 
 \newtcolorbox{keyidea}[1][]{enhanced,breakable,colback=physics!6,colframe=physics!70!black,
-  fonttitle=\bfseries,title=#1,boxrule=0.6pt,arc=2pt,left=6pt,right=6pt}
+  fonttitle=\bfseries,title={#1},boxrule=0.6pt,arc=2pt,left=6pt,right=6pt}
 \newtcolorbox{aside}[1][]{enhanced,breakable,colback=trainable!5,colframe=trainable!70!black,
-  fonttitle=\bfseries,title=#1,boxrule=0.6pt,arc=2pt,left=6pt,right=6pt}
+  fonttitle=\bfseries,title={#1},boxrule=0.6pt,arc=2pt,left=6pt,right=6pt}
+\newtcolorbox{assume}[1][]{enhanced,breakable,colback=datac!5,colframe=datac!70!black,
+  fonttitle=\bfseries,title={#1},boxrule=0.6pt,arc=2pt,left=6pt,right=6pt}
+\newtcolorbox{watch}[1][]{enhanced,breakable,colback=warn!5,colframe=warn!70!black,
+  fonttitle=\bfseries,title={#1},boxrule=0.6pt,arc=2pt,left=6pt,right=6pt}
+\setlist{itemsep=2pt,topsep=3pt}
+\setlength{\emergencystretch}{3em}
+
+\lstset{language=Python, basicstyle=\ttfamily\small, columns=fullflexible,
+  keepspaces=true, commentstyle=\color{physics!70!black}\itshape,
+  keywordstyle=\color{trainable!90!black}\bfseries, stringstyle=\color{datac},
+  showstringspaces=false, frame=single, rulecolor=\color{gray!40},
+  backgroundcolor=\color{gray!3}, xleftmargin=4pt, xrightmargin=4pt,
+  aboveskip=6pt, belowskip=6pt}
 
 \title{\textbf{The \texttt{dihiggs} model}\\[4pt]
-\large A physics-structured neural network for the HEFT di-Higgs mass spectrum}
-\date{October 2026}
+\large A smooth, exactly Bayesian model of the HEFT di-Higgs mass spectrum,\\
+and its systematic uncertainty}
+\author{P.~Bhat (Fermilab), N.~De~Filippis (Politecnico di Bari),\\
+K.F.~Johnson, H.B.~Prosper, R.~Starnes (Florida State University)}
+\date{November 2026}
 
 \begin{document}
 \maketitle
 
 \begin{abstract}
 \noindent
-This note explains, step by step, the model implemented in
-\code{dihiggs/heftnet.py}. The goal is to predict the gluon-fusion di-Higgs
-cross section in each bin of the di-Higgs invariant mass $\mhh$ as a function of
-$\mhh$ and of five Wilson coefficients of the Higgs effective field theory (HEFT).
-The central idea is to \emph{not} ask the neural network to learn what physics
-already tells us: the dependence on the Wilson coefficients is a known polynomial
-with 23 terms. The network learns only the 23 unknown functions of $\mhh$ that
-multiply those terms. We first derive the polynomial, then describe the network,
-the data, the training, and the testing, and end with some points worth noticing.
+This note describes, step by step, the model of the gluon-fusion di-Higgs cross section
+implemented in \code{dihiggs/smooth.py}. It replaces the October 2026 version of this note,
+which described the neural network \code{HEFTNet}; the network is now a cross-check
+(\cref{sec:crosscheck}). The model predicts the density $d\sigma/d\mhh$ as a function of
+the di-Higgs mass $\mhh$ and of five HEFT Wilson coefficients. The dependence on the
+coefficients is a known polynomial with 23 terms. Each of the 23 unknown functions of $\mhh$
+that multiply those terms is a smooth spline. Because the model is linear in its parameters,
+its posterior density is \emph{exactly} Gaussian. No training, ensembles or sampling are
+needed. The note gives particular attention to the model's \emph{systematic uncertainty}: an
+uncertainty that comes not from statistical fluctuations but from an imperfection of the
+physics description. Here the imperfection is that the POWHEG spectra depart slightly from
+the 23-term form that the theory says they must have
+(\cref{sec:systematic}).
 \end{abstract}
+
+\begin{keyidea}[In brief]
+\begin{enumerate}
+  \item \textbf{The model.} $\displaystyle \frac{d\sigma}{d\mhh}(m;\theta) =
+    \sum_{i=1}^{23} C_i(\theta)\,a_i(m)$, where the $C_i(\theta)$ are the 23 known HEFT
+    monomials and $a_i(m) = \phi(m)\sum_{j=1}^{40}\beta_{ij}B_j(m)$, with $B_j$ cubic
+    B-splines and $\phi$ the two-body threshold factor. The 920 coefficients $\beta_{ij}$ are
+    fitted to the \emph{bin integrals} of 3,989 POWHEG spectra by Poisson maximum likelihood,
+    with a smoothness prior whose strengths are set by the evidence.
+  \item \textbf{Three uncertainties} enter any comparison with POWHEG: the Poisson noise of
+    the POWHEG sample (statistical, $\approx$ 1,000 events per bin near threshold); the fit
+    uncertainty of the model (statistical, a median 2.9\% of the noise); and the
+    \textbf{model-error term} (systematic).
+  \item \textbf{The systematic.} POWHEG departs from the 23-term form smoothly in $\mhh$, and
+    most where the 23 terms cancel. We model the departure as a relative error $\varepsilon(m)$
+    on each term, giving a standard deviation $\delta = \varepsilon(m)\sum_i|C_i(\theta)A_i|$
+    per bin. $\varepsilon$ is measured on data not used in the fit: 0.08\% at threshold,
+    0.28\% at 600~GeV, 3.7\% at 1.45~TeV (three parameters in all).
+  \item \textbf{Validation} on 1,000 independent spectra. The accuracy equals that of the
+    best possible model of the 23-term form (likelihood-ratio statistic $-2\ln\lambda$ per bin
+    1.566 below and 1.100 above 555~GeV). With the systematic included, the pulls have
+    standard deviation 1.004 and are calibrated at every degree of cancellation.
+\end{enumerate}
+\end{keyidea}
 
 \tableofcontents
 
@@ -65,9 +118,9 @@ the data, the training, and the testing, and end with some points worth noticing
 \section{What we want to model, and why}
 \label{sec:goal}
 
-In gluon fusion, $gg \to hh$, new physics described by HEFT changes both the
-size and the shape of the di-Higgs invariant-mass spectrum. The relevant part of
-the HEFT Lagrangian is~\cite{alasfar}
+In gluon fusion, $gg \to hh$, new physics described by HEFT changes both the size and the
+shape of the di-Higgs invariant-mass spectrum. The relevant part of the HEFT Lagrangian
+is~\cite{alasfar}
 \begin{equation}
   \mathcal{L}_{\text{HEFT}} \supset
   -m_t\Big(\ct\,\frac{h}{v} + \ctt\,\frac{h^2}{v^2}\Big)\bar t t
@@ -92,28 +145,25 @@ $\cgghh$& effective (point-like) coupling $gghh$ & 0\\
 \end{center}
 We collect them into $\theta = (\kl, \ct, \ctt, \cggh, \cgghh)$.
 
-We want a function
-\begin{equation}
-  \sigma(\mhh, \theta) = \text{cross section in a 15~GeV bin centred at } \mhh,
-\end{equation}
-valid everywhere in a broad region of the 5-dimensional $\theta$ space.
-Such a function lets us \emph{reweight} existing simulated events to any other
-$\theta$, instead of running a new simulation for every point, and it is an
-ingredient of the simulation-based construction of confidence sets in $\theta$
-that motivates this project~\cite{lee,alkadhim}.
+We want the density $d\sigma/d\mhh(m;\theta)$, valid everywhere in a broad region of the
+five-dimensional $\theta$ space, together with an honest uncertainty. Such a function lets
+us \emph{reweight} existing simulated events to any other $\theta$, instead of running a new
+simulation for every point. It is also an ingredient of the simulation-based construction of
+confidence sets in $\theta$ that motivates this project~\cite{lee,alkadhim}.
 
-\Cref{fig:spectra} shows four of the simulated spectra. Notice how different they
-are: their sizes span three orders of magnitude, some fall steeply from threshold,
-one peaks near 700~GeV, and spectrum~(b) has a sharp dip near 330~GeV, a sign of
-destructive interference between different contributions to the amplitude.
-The model has to describe all of these with one set of parameters.
+\Cref{fig:spectra} shows four of the simulated spectra. They are very different: their
+sizes span three orders of magnitude, some fall steeply from threshold, one peaks near
+700~GeV, and spectrum~(b) has a sharp dip near 330~GeV. The dip is a sign of destructive
+interference between different contributions to the amplitude. The model has to describe
+all of these with one set of parameters. Interference will matter again when we come to the
+systematic uncertainty (\cref{sec:systematic}).
 
-\begin{figure}[t]
+\begin{figure}[!htb]
   \centering
   \includegraphics[width=\textwidth]{spectra.pdf}
-  \caption{Four POWHEG spectra from the held-out test set, chosen to show the
-  range of shapes. Left: cross section per 15~GeV bin (log scale). Right: the same
-  spectra divided by their totals, so that only the shapes are compared.}
+  \caption{Four POWHEG spectra from the held-out test set, chosen to show the range of
+  shapes. Left: cross section per 15~GeV bin (log scale). Right: the same spectra divided
+  by their totals, so that only the shapes are compared.}
   \label{fig:spectra}
 \end{figure}
 
@@ -143,7 +193,7 @@ The sub-amplitudes $\mathcal{M}_i$ depend on the kinematics (on $\mhh$ and the
 scattering angle) but \emph{not} on $\theta$. All of the $\theta$ dependence is in the
 five numbers $v_i$.
 
-\begin{figure}[t]
+\begin{figure}[!htb]
 \centering
 \tikzfeynmanset{every vertex={/tikz/inner sep=0pt}}
 \newcommand{\diaglabel}[2]{\node[below=2pt, align=center, font=\small] at (#1) {#2};}
@@ -252,10 +302,10 @@ A cross section is proportional to $|\mathcal{M}|^2$. Squaring
   \mathrm{Re}\big(\mathcal{M}_i\mathcal{M}_j^*\big).
 \end{equation}
 Now integrate over everything except $\mhh$ (the scattering angle, and the
-parton distributions), and over one 15~GeV bin. Because the $v_i$ do not depend on
+parton distributions). Because the $v_i$ do not depend on
 the kinematics, they come out of the integral:
 \begin{equation}
-  \sigma(\mhh,\theta) = \sum_{i\le j} v_i(\theta)\,v_j(\theta)\, K_{ij}(\mhh),
+  \frac{d\sigma}{d\mhh}(\mhh,\theta) = \sum_{i\le j} v_i(\theta)\,v_j(\theta)\, K_{ij}(\mhh),
   \qquad
   K_{ij}(\mhh) \propto \int \mathrm{Re}\big(\mathcal{M}_i\mathcal{M}_j^*\big)\,
   d(\text{everything but } \mhh).
@@ -282,33 +332,664 @@ amplitude gives products $w_a v_i$. The products with $w_1=\ct^2$ reproduce LO
 monomials, but those with $\ct\cggh$ and $\cggh^2$ give exactly the 8 new monomials
 16--23 of \cref{tab:monomials}.
 
+
 \begin{keyidea}[Key idea]
-For \emph{every} $\mhh$ the cross section is a fixed polynomial in $\theta$:
+For \emph{every} $\mhh$ the density is a fixed polynomial in $\theta$:
 \begin{equation}
-  \boxed{\;\sigma(\mhh,\theta) = \sum_{i=1}^{23} c_i(\theta)\, a_i(\mhh)
-  = \bc(\theta)\cdot\ba(\mhh)\;}
+  \boxed{\;\frac{d\sigma}{d\mhh}(m;\theta) = \sum_{i=1}^{23} C_i(\theta)\, a_i(m)
+  = \bC(\theta)\cdot\ba(m)\;}
   \label{eq:factorised}
 \end{equation}
-The 23 monomials $c_i(\theta)$ are \emph{known exactly} (\cref{tab:monomials}).
-Only the 23 functions $a_i(\mhh)$ are unknown. They are the integrated (and
-NLO-corrected) interference kernels $K_{ij}$. The coupling dependence and the
-kinematic dependence \emph{factorise}.
+The 23 monomials $C_i(\theta)$ are \emph{known exactly} (\cref{tab:monomials}). Only the 23
+functions $a_i(m)$, in pb/GeV, are unknown. They are the integrated, NLO-corrected
+interference kernels $K_{ij}$. The coupling dependence and the kinematic dependence
+\emph{factorise}.
 \end{keyidea}
 
-The LHC Higgs Working Group determines the $a_i$ (called $dA_i$ there) one bin at a
-time with a least-squares fit~\cite{alasfar}. The \code{dihiggs} model instead
-represents them as smooth functions of $\mhh$ given by a neural network.
+\begin{assume}[When is the factorised form exact?]
+The derivation needs only two things. First, the amplitude must be linear in the five
+coupling combinations of \cref{eq:v}, together with their NLO extensions. Second, nothing
+else in the calculation may depend on $\theta$: the renormalisation and factorisation
+scales, the parton distributions and the phase-space cuts must be the same for every
+$\theta$. In a fixed-order calculation that meets these conditions, \cref{eq:factorised} is
+exact, not an approximation. This matters later: if the POWHEG spectra depart from the
+23-term form, the departure tells us about the calculation or its numerical implementation,
+not about missing physics in the form itself (\cref{sec:systematic}).
+\end{assume}
+
+The LHC Higgs Working Group determines the $a_i$ (called $dA_i$ there) one bin at a time with
+a least-squares fit~\cite{alasfar}. Here they are smooth functions of $\mhh$, determined by
+all bins at once.
+
+% ===========================================================================
+\section{The data: POWHEG spectra are histograms of counts}
+\label{sec:data}
+
+\paragraph{Spectra.} The file \file{data/powheg_total_gauss_params_13TeV.csv.gz} contains
+4,999 POWHEG NLO spectra at $\sqrt{s}=13$~TeV. Each row holds one parameter point $\theta$
+and the cross section in pb in 100 bins of 15~GeV ($[15k,\,15(k+1))$~GeV). The points are
+scattered roughly as Gaussians centred on the SM point, with standard deviations of about 5
+for $\kl$ and about 2 for the other four coefficients. We use the 80 bins from 255 to
+1455~GeV. A thousand spectra are set aside untouched as the \emph{test} spectra. The
+remaining spectra are ``diced'' into one row per bin $(\theta_s, k, t_{sk})$ and shuffled.
+88\% of these rows (281,044, from 3,989 spectra, including 1,814 restored empty bins) are used
+in the fit. The other 12\%, the 38,076 \emph{quick-test} rows, are never used in the fit and
+serve to measure the systematic uncertainty (\cref{sec:eps}).
+
+\paragraph{Exact counts.} Every spectrum is a histogram of 40,000 generated events of equal
+weight $q_s$ (a few incomplete runs have fewer; \file{data/README.md}). The cross section in
+bin $k$ of spectrum $s$ is therefore \emph{exactly}
+\begin{equation}
+  t_{sk} = q_s\, n_{sk}, \qquad n_{sk}\in\{0, 1, 2, \dots\},
+\end{equation}
+and \code{dihiggs/counts.py} recovers $q_s$ and the integer counts $n_{sk}$ from the stored
+numbers by a greatest-common-divisor search (\file{docs/counts/counts_note.pdf}). The counts
+are Poisson distributed and, apart from a negligible multinomial correlation, independent.
+Near threshold a bin holds about 1,000--1,800 events; at 1.4~TeV, about 20. This gives us
+the exact statistical noise of every number we fit, which is what makes the separation of
+statistical and systematic uncertainty in \cref{sec:systematic} possible.
 
 % ===========================================================================
 \section{The model}
 \label{sec:model}
 
-\subsection{Architecture}
+\subsection{Smooth coefficient functions}
 
-\Cref{fig:architecture} shows the whole model. It has two branches that meet
-in a dot product.
+Each coefficient function is a sum of $J = 40$ cubic B-splines times a threshold factor:
+\begin{equation}
+  a_i(m) = \phi(m)\sum_{j=1}^{J}\beta_{ij}\,B_j(m), \qquad
+  \phi(m) = \sqrt{1 - \frac{4m_h^2}{m^2}}, \quad m_h = 125~\text{GeV}.
+  \label{eq:spline}
+\end{equation}
 
-\begin{figure}[t]
+\begin{aside}[B-splines in brief]
+A cubic B-spline $B_j(m)$ is a smooth bump. It is a piecewise cubic polynomial that is
+non-zero only over four consecutive knot intervals, and its pieces join with continuous first
+and second derivatives. A weighted sum of B-splines can represent any smooth curve whose
+wiggles are not finer than the knot spacing. Each coefficient $\beta_{ij}$ acts locally: it
+moves $a_i$ only near knot $j$. B-splines are the standard tool for smoothing in
+statistics~\cite{deboor,eilers}.
+\end{aside}
+
+\paragraph{Knots.} The functions change fastest just above threshold and slowly above
+600~GeV. The 38 breakpoints are therefore spaced uniformly in $\sqrt{m - 250~\text{GeV}}$
+between 250 and 1500~GeV, which makes them dense just above threshold (\cref{fig:basis}). The
+knot vector is \emph{clamped}: each end point is repeated three more times. As a result the
+40 basis functions sum to one everywhere on $[250, 1500]$~GeV, and only $B_1$ is non-zero at
+250~GeV.
+
+\paragraph{Threshold factor.} At $\mhh = 2m_h$ the two-body phase space vanishes like the Higgs
+velocity in the $hh$ rest frame, $\phi = \sqrt{1-4m_h^2/m^2}$, and so does $d\sigma/d\mhh$.
+Building $\phi$ in leaves the splines only the smooth remainder to describe. Within
+255--1455~GeV the factor hardly changes the fit. Below 255~GeV it is decisive: predicting the
+unused 240--255~GeV bin, the model with $\phi$ is 8\% high, the model without it 55\% high.
+
+\begin{figure}[!htb]
+\centering
+\includegraphics[width=\textwidth]{fig_basis.pdf}
+\input{paper/fig_basis_caption.tex}
+\label{fig:basis}
+\end{figure}
+
+\subsection{The prediction is a bin integral, and it is linear}
+
+POWHEG gives the integral of the density over each bin. The model's prediction for bin
+$k = [e_k, e_{k+1}]$ of a spectrum at $\theta$ is therefore the integral of
+\cref{eq:factorised} over the bin, not its value at the centre:
+\begin{equation}
+  f_k(\theta) = \int_{e_k}^{e_{k+1}}\frac{d\sigma}{dm}\,dm
+  = \sum_{i=1}^{23} C_i(\theta)\,A_{ik}, \qquad
+  A_{ik} = \int_{e_k}^{e_{k+1}} a_i\,dm = \sum_{j=1}^{J}\beta_{ij}\,I_{jk}, \qquad
+  I_{jk} = \int_{e_k}^{e_{k+1}}\phi\,B_j\,dm .
+  \label{eq:linear}
+\end{equation}
+The numbers $I_{jk}$ depend only on the knots and the binning. They are computed once by
+16-point Gauss--Legendre quadrature in each bin (\code{SplineBasis.integrals}). The prediction
+is \emph{linear} in the $23J = 920$ coefficients $\beta_{ij}$. Everything that follows (an
+exact posterior, exact predictions for any binning, an exact evidence) rests on this
+linearity.
+
+\paragraph{The free fit as a limit.} If each basis function is a box covering one bin, and
+$\phi = 1$, then \cref{eq:linear} becomes a separate fit of 23 numbers per bin, $23\times80 =
+1{,}840$ in all. This is the Working Group's per-bin approach~\cite{alasfar}. No model of the
+form \cref{eq:factorised} can describe the data better than this free fit, so we use it as a
+benchmark. It reappears in \cref{sec:systematic} as the key piece of evidence.
+
+\subsection{Parameter count}
+
+\begin{center}
+\begin{tabular}{lrl}
+\toprule
+quantity & number & determined by\\
+\midrule
+spline coefficients $\beta_{ij}$ & 920 & the fit (\cref{sec:fit})\\
+smoothness strengths $\lambda_i$ & 23 & the evidence\\
+model-error coefficient $\varepsilon(m)$ & 3 & the quick-test rows (\cref{sec:eps})\\
+\midrule
+total & 946 & \\
+\bottomrule
+\end{tabular}
+\end{center}
+The data determine about 602 of the 920 linear combinations of the $\beta_{ij}$ (the
+``number of well-determined parameters'' $\gamma$~\cite{mackay}). The rest are fixed by the
+smoothness prior. For comparison, \code{HEFTNet} has 3,944 parameters and the free fit 1,840.
+
+% ===========================================================================
+\section{The fit}
+\label{sec:fit}
+
+\subsection{Likelihood: weight by the model, not by the data}
+
+With hundreds of events in most bins a Gaussian likelihood is accurate:
+\begin{equation}
+  -\ln p(\boldsymbol t\mid\bbeta) = \tfrac12\sum_{s,k} \frac{(t_{sk} - f_{sk})^2}{\snoise^2(s,k)}
+  + \text{const},\qquad \snoise^2(s,k) = q_s\,\max(f_{sk},\, q_s).
+  \label{eq:like}
+\end{equation}
+The variance is the Poisson variance \emph{of the model's prediction}, $q_s^2\,\mu_{sk}$ with
+$\mu_{sk} = f_{sk}/q_s$ the predicted number of events. The $\max$ protects the few bins where
+the prediction is below one event. Weighting by the \emph{observed} count instead (Neyman's
+$\chi^2$, $\snoise^2 = q_s t_{sk}$) gives downward fluctuations larger weights. It biases the
+fit low by about one event per bin~\cite{bakercousins}, which, with 3,989 spectra pooled and
+20--50 events per bin at high mass, amounts to many standard deviations. Because
+$\snoise^2$ depends on the fit, the fit is iterated: fit, recompute the variances, refit. Each
+step moves half-way, by the geometric mean of the old and new variances, to avoid
+oscillation (\code{SmoothHEFT.fit\_poisson}, 12 iterations). At convergence this is the
+Poisson maximum-likelihood fit. A toy with known coefficient functions confirms that the fit
+recovers them within its quoted uncertainties (\file{code/smooth_toy.py}: pulls with mean
+$+0.06$ and s.d.\ 0.97).
+
+\subsection{Smoothness prior and the evidence}
+
+For each function $i$, a Gaussian prior on the second differences of its coefficients (a
+``P-spline''~\cite{eilers}):
+\begin{equation}
+  -\ln\pi(\bbeta_i\mid\lambda_i) = \tfrac12\lambda_i\sum_{j=3}^{J}
+  \big(\beta_{ij} - 2\beta_{i,j-1} + \beta_{i,j-2}\big)^2 + \text{(negligible ridge)} + \text{const}.
+\end{equation}
+This is the discrete analogue of a penalty on the curvature $\int (a_i'')^2\,dm$. Straight lines
+are not penalised. The 23 strengths $\lambda_i$, one per function because the functions
+differ by orders of magnitude in size, are chosen by maximising the evidence
+$p(\boldsymbol t\mid\boldsymbol\lambda)$ with MacKay's fixed-point updates~\cite{mackay}.
+Because the model is linear, the evidence is available in closed form.
+
+\subsection{The exact posterior}
+
+Likelihood and prior are both Gaussian in $\bbeta$, so the posterior is exactly Gaussian:
+\begin{equation}
+  \bbeta \mid \boldsymbol t \;\sim\; \mathcal N\big(\hat\bbeta,\; H^{-1}\big), \qquad
+  H = \Phi^{\mathsf T}W\Phi + \Lambda, \qquad \hat\bbeta = H^{-1}\Phi^{\mathsf T}W\boldsymbol t,
+\end{equation}
+where each row of $\Phi$ is $\bC(\theta_s)\otimes\boldsymbol I_k$ (\cref{eq:linear}),
+$W = \mathrm{diag}(1/\snoise^2)$, and $\Lambda$ is the prior precision. The factorisation into
+monomials and bins makes $\Phi^{\mathsf T}W\Phi = \sum_{k=1}^{80} S_k\otimes\boldsymbol
+I_k\boldsymbol I_k^{\mathsf T}$, with $S_k = \sum_s w_{sk}\bC_s\bC_s^{\mathsf T}$ a $23\times23$
+matrix, so the whole fit takes about a minute on a laptop CPU.
+
+\paragraph{Predictions.} For any $\theta$ and any interval, the prediction is
+$\boldsymbol g^{\mathsf T}\hat\bbeta$ and its \emph{fit variance} is
+$\sfit^2 = \boldsymbol g^{\mathsf T}H^{-1}\boldsymbol g$, with $\boldsymbol g = \bC(\theta)\otimes
+\int\phi\boldsymbol B\,dm$ over that interval. Correlations between bins, between values of
+$\theta$, and between the $a_i$ come out automatically. The fit uncertainty is small, a median
+2.9\% of the Poisson noise of a POWHEG bin: the 3,989 training spectra determine the 23
+functions very well. This is \emph{not} the dominant uncertainty, as the next section shows.
+
+% ===========================================================================
+\section{The systematic uncertainty: the model-error term}
+\label{sec:systematic}
+
+\subsection{Three kinds of uncertainty}
+\label{sec:three}
+
+Compare the model's prediction $f_{sk}$ with the POWHEG cross section $t_{sk}$ in one bin of
+one spectrum. Three distinct effects make them differ:
+
+\begin{center}
+\small
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{p{3.2cm}p{2.0cm}p{5.3cm}p{3.6cm}}
+\toprule
+uncertainty & kind & origin & size (median, relative to the noise)\\
+\midrule
+Poisson noise, $\snoise$ & statistical & finite number of events in the POWHEG sample being compared;
+  belongs to the \emph{reference}, not to the model & 1 (by definition)\\
+fit uncertainty, $\sfit$ & statistical & finite number of training spectra; the posterior
+  width $H^{-1}$ & 0.03\\
+model-error term, $\delta$ & systematic & POWHEG does not exactly obey the 23-term form of
+  \cref{eq:factorised} & 0.17 below and 0.16 above 555~GeV; up to 1 where the 23 terms
+  cancel\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The first two are \emph{statistical}: they come from random fluctuations, they shrink as
+samples grow, and we know their size exactly (\cref{sec:data,sec:fit}). The third is a
+\emph{systematic} uncertainty in the sense physicists use the word. It is not caused by
+statistical fluctuations. It is caused by a deficiency in the physics models, here in the
+agreement between the POWHEG calculation and the functional form we impose on it. More
+training spectra would not reduce it. The three add in quadrature in the pull,
+\begin{equation}
+  z_{sk} = \frac{t_{sk} - f_{sk}}{\sqrt{\snoise^2 + \sfit^2 + \delta^2}} ,
+  \label{eq:pull}
+\end{equation}
+which should be a standard normal variable if all three are right.
+
+\begin{watch}[What this systematic is \emph{not}]
+The model is built to reproduce POWHEG. Its systematic uncertainty measures how well
+\emph{POWHEG agrees with the 23-term form}, i.e.\ the internal consistency of the
+simulated spectra. It does \emph{not} include the uncertainties of the NLO prediction
+relative to nature: renormalisation and factorisation scale variations, parton distributions,
+the top-mass scheme, missing higher orders. In a physics analysis those must be added
+separately, as for any generator.
+\end{watch}
+
+\subsection{The evidence: an accuracy floor that no model of the 23-term form can cross}
+\label{sec:evidence}
+
+\paragraph{The floor.} A natural measure of how well a prediction $\mu$ (in events) describes
+an observed count $n$ is the likelihood-ratio statistic
+\begin{equation}
+  -2\ln\lambda = -2\ln\frac{\mathrm{Poisson}(n;\mu)}{\mathrm{Poisson}(n;n)}
+  = 2\Big[\mu - n + n\ln\frac{n}{\mu}\Big].
+\end{equation}
+For a correct prediction it follows, asymptotically, a $\chi^2$ distribution with one degree
+of freedom (Wilks). No parameter is fitted to the test spectra, so its mean per bin should be 1.
+On the 1,000 test spectra it is 1.566 between 255 and 555~GeV and 1.100 above, for the smooth
+model. For the \emph{free fit} (23 independent numbers per bin, the best that any model of the
+form \cref{eq:factorised} can do) it is 1.559 and 1.105. For the network ensemble it is 1.561
+and 1.121 (\cref{tab:accuracy}). Three very different models reach the same floor. The excess
+over 1 is therefore not a property of any particular model of the $a_i$. It is a property of
+the data: the POWHEG spectra do not exactly have the 23-term form.
+
+\paragraph{What the floor is not.} The excess is not small-count statistics (near threshold the
+bins hold over 1,000 events, and Neyman, Pearson and likelihood-ratio measures agree). It is
+not the normalisation: the totals scatter about the fit by 0.47\%, as expected from the counts
+alone (0.51\%). And it is not the fit uncertainty, which is 3\% of the noise
+(\file{docs/modelerror/model_error_note.pdf}).
+
+\paragraph{It grows with cancellation.} Define for each spectrum the \emph{cancellation
+ratio}
+\begin{equation}
+  R_s = \frac{\sum_k t_{sk}}{\sum_k\sum_i |C_i(\theta_s)A_{ik}|} ,
+  \label{eq:ratio}
+\end{equation}
+the total cross section divided by the sum of the magnitudes of its 23 terms. $R = 1$ when
+all terms have the same sign. $R \ll 1$ when the cross section is a small difference of
+large terms, i.e.\ when the interference is strongly destructive. Divide the 1,000 test
+spectra into fifths of $R$. \Cref{tab:cancel} shows that the excess, measured by
+$\langle z^2\rangle$ with only the statistical uncertainties, sits almost entirely in the most
+cancelling fifth.
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{lccccc}
+\toprule
+cancellation fifth & 1 (strongest) & 2 & 3 & 4 & 5 (weakest)\\
+range of $R$ & 0.002--0.12 & 0.12--0.23 & 0.23--0.42 & 0.42--0.73 & 0.73--1.00\\
+\midrule
+$\langle z^2\rangle$, noise and fit only & 1.70 & 1.10 & 1.07 & 1.06 & 1.01\\
+neighbour correlation, 255--555 GeV & 0.60 & 0.14 & 0.08 & 0.04 & 0.01\\
+neighbour correlation, $>555$ GeV & 0.23 & 0.04 & 0.04 & 0.01 & $-0.01$\\
+\bottomrule
+\end{tabular}
+\caption{The excess and the smoothness of the residuals, by degree of cancellation (200
+test spectra per column). Residuals are $(t - f)/\snoise$; ``neighbour correlation'' is the
+correlation between the residuals of adjacent bins of the same spectrum. Poisson noise alone gives
+$\langle z^2\rangle = 1$ and no correlation between bins.}
+\label{tab:cancel}
+\end{table}
+
+\paragraph{It is smooth in $\mhh$.} Poisson noise is independent from bin to bin. The residuals
+are not: in the most cancelling fifth, neighbouring bins below 555~GeV are correlated by 0.60
+(\cref{tab:cancel}), and the correlation extends over 5--8 bins. POWHEG departs from the
+23-term form by a \emph{smooth}, spectrum-dependent amount. \Cref{fig:spectra_dz} shows three
+typical cases. With little cancellation POWHEG and the model agree to within Poisson noise. With
+strong cancellation the residuals form a smooth wave that the 23-term form cannot follow. The
+most cancelling test spectrum (ID 917, $R = 0.0025$: its cross section is a quarter of a
+per cent of the sum of the magnitudes of its terms) has a mean $-2\ln\lambda$ of 51 per bin.
+
+\begin{figure}[!htb]
+\centering
+\includegraphics[width=\textwidth]{fig_spectra_dz.pdf}
+\input{paper/fig_spectra_dz_caption.tex}
+\label{fig:spectra_dz}
+\end{figure}
+
+\subsection{Why errors grow when terms cancel}
+\label{sec:why}
+
+Suppose that in the POWHEG calculation for spectrum $s$ each of the 23 terms carries a small
+relative error $\delta_{i}(m;s)$:
+\begin{equation}
+  \frac{d\sigma^{\text{POWHEG}}_s}{dm} = \sum_{i=1}^{23} C_i(\theta_s)\,a_i(m)\,\big[1 +
+  \delta_i(m;s)\big]
+  \quad\Longrightarrow\quad
+  \text{error} = \sum_{i=1}^{23} C_i(\theta_s)\,a_i(m)\,\delta_i(m;s).
+  \label{eq:relerr}
+\end{equation}
+Two features of \cref{eq:relerr} explain everything in \cref{sec:evidence}.
+
+\begin{enumerate}
+  \item \textbf{Amplification by cancellation.} The error is of the order of
+    $\varepsilon\sum_i|C_ia_i|$, where $\varepsilon$ is the typical size of the
+    $\delta_i$, while the cross section is $\sum_iC_ia_i$. The \emph{relative} error on the
+    cross section is therefore about $\varepsilon/R$. An error of 0.5\% on terms that
+    cancel to 0.25\% of their size is a 200\% error on the result. When the terms add
+    ($R\approx1$) the same error is 0.5\%, far below the Poisson noise.
+  \item \textbf{The errors must differ from spectrum to spectrum.} If the $\delta_i(m)$ were
+    the same in every spectrum, the error would be
+    $\sum_i C_i(\theta)\,[a_i\delta_i]$, which is again of the 23-term form with
+    $a_i \to a_i(1+\delta_i)$. The fit would simply absorb it, and no floor would appear. A
+    floor can arise only if the errors vary from run to run, i.e.\ with $s$, while being
+    smooth in $m$ within each run. This is what one expects if each HEFT point was generated
+    as an independent run, with its own integration grids and numerical errors.
+\end{enumerate}
+
+\begin{aside}[An analogy from the bench]
+Measure a small quantity as the difference of two large readings from instruments calibrated
+to 0.5\%. A 0.5\% calibration error on each reading is harmless for a large sum but ruinous
+for a small difference. Moreover, if the same instruments are used every time, the
+calibration error is a fixed offset that can be measured and removed. Only if the
+calibration changes from one measurement to the next does it become an uncertainty. That is
+the situation here: the ``instruments'' are the 23 components of the POWHEG calculation, and
+the ``calibration'' is apparently redone with every run.
+\end{aside}
+
+\subsection{The model of the systematic}
+\label{sec:model_error}
+
+\Cref{eq:relerr} suggests modelling the systematic as a random error, smooth in $m$, of
+relative size $\varepsilon(m)$ on each of the 23 terms. How the $\delta_i$ of one spectrum are
+correlated among themselves is unknown. Two limits bracket the possibilities. For the
+standard deviation of $\sum_iC_iA_{ik}\delta_i$ in bin $k$, with $A_{ik}$ the bin integral of
+$a_i$:
+\begin{align}
+  \text{independent } \delta_i:\quad & \delta_{sk} = \varepsilon(m_k)\Big[\sum_{i=1}^{23}
+    \big(C_i(\theta_s)A_{ik}\big)^2\Big]^{1/2}, \label{eq:quad}\\
+  \text{any correlation (upper bound):}\quad & \delta_{sk} = \varepsilon(m_k)\sum_{i=1}^{23}
+    \big|C_i(\theta_s)A_{ik}\big| . \label{eq:lin}
+\end{align}
+The second line follows from the triangle inequality, since the standard deviation of a sum is
+at most the sum of the standard deviations. It is the largest standard deviation that relative
+errors of size $\varepsilon$ can produce, whatever their correlation. We adopt
+\cref{eq:lin}, the more conservative form. It is the \textbf{model-error term}, and it is
+added in quadrature to the statistical uncertainties, as in \cref{eq:pull}. The data cannot
+distinguish the two forms (\cref{tab:calib}): both calibrate every degree of cancellation,
+with a correspondingly larger $\varepsilon$ for \cref{eq:quad}.
+
+\paragraph{Why not simply inflate the noise?} The obvious alternative, a systematic
+proportional to the statistical error, $\delta^2 = a(m)\,\snoise^2$, was used earlier in the
+project. It fixes the \emph{average} calibration but makes the error the same fraction of the
+noise for every spectrum. It is therefore too small for the cancelling spectra and too large
+for the others (\cref{tab:calib}, \cref{fig:model_error}c). The form \cref{eq:lin} uses the
+physics of \cref{eq:relerr}: it knows, from $\theta$ alone, which spectra cancel.
+
+\subsection{Measuring $\varepsilon(m)$ on data not used in the fit}
+\label{sec:eps}
+
+The coefficient $\varepsilon$ is determined on the 38,076 quick-test rows: single bins that
+were never used in the fit, about 480 per bin. In each bin $k$ we solve
+\begin{equation}
+  \Big\langle \frac{(t - f)^2}{\snoise^2 + \sfit^2 + \varepsilon_k^2 S^2}\Big\rangle_{\text{rows in bin }k}
+  = 1, \qquad S = \sum_i|C_i(\theta)A_{ik}|,
+\end{equation}
+for $\varepsilon_k \ge 0$ (by bisection; $\varepsilon_k = 0$ if the statistical errors alone
+already give $\langle z^2\rangle \le 1$, which happens in 5 of the 80 bins). Then
+$\ln\varepsilon$ is smoothed by a quadratic in $u = (m - 855~\text{GeV})/600~\text{GeV}$,
+fitted to the $\ln\varepsilon_k$ with weights proportional to the square root of the number of
+rows:
+\begin{equation}
+  \ln\varepsilon(m) = p_0 + p_1 u + p_2 u^2 .
+\end{equation}
+These three numbers are the systematic's only parameters. They are stored with the model
+(\code{eps\_poly} in \file{smooth_model.npz}) and evaluated by \code{SmoothHEFT.epsilon(m)}.
+\Cref{fig:model_error}a shows the result: $\varepsilon = 0.077\%$ at 262~GeV, 0.28\% at
+600~GeV and 3.7\% at 1.45~TeV. Near threshold, where the spectra are largest, the 23
+components of POWHEG are consistent with one another to about one part in a thousand. That is
+a plausible size for the numerical precision of an NLO calculation.
+
+\begin{figure}[!htb]
+\centering
+\includegraphics[width=\textwidth]{fig_model_error.pdf}
+\caption{The systematic uncertainty. (a) The model-error coefficient: per bin, from the
+quick-test rows (points), and its three-parameter smooth form (line). (b) Standard deviation of
+the pull \cref{eq:pull} on the 1,000 test spectra in each bin, without (dotted) and with
+(solid) the model-error term. (c) $\langle z^2\rangle$ by fifth of the cancellation ratio
+\cref{eq:ratio}, for no systematic, a systematic proportional to the noise, and the two forms
+\cref{eq:lin} (adopted) and \cref{eq:quad}. Each systematic was determined on the quick-test
+rows; 1 is perfect calibration.}
+\label{fig:model_error}
+\end{figure}
+
+\subsection{Validation on the test spectra}
+\label{sec:syst_validation}
+
+The test spectra play no part in determining either the model or $\varepsilon$, so they give
+an independent check (\cref{tab:calib}, \cref{fig:model_error}b,c).
+
+\begin{table}[h]
+\centering
+\footnotesize
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{lccccc}
+\toprule
+ & \multicolumn{3}{c}{s.d.\ of the pull} & & $\langle z^2\rangle$ by cancellation fifth\\
+systematic & all & 255--555 & $>555$ GeV & $|z|<2$ & (1 = strongest \dots\ 5)\\
+\midrule
+none & 1.090 & 1.218 & 1.043 & 93.9\% & 1.70, 1.10, 1.07, 1.06, 1.01\\
+$a(m)\,\snoise^2$ & 1.018 & 1.049 & 1.008 & 95.3\% & 1.45, 0.96, 0.94, 0.94, 0.90\\
+\textbf{$\varepsilon\sum_i|C_iA_i|$ (adopted)} & \textbf{1.004} & \textbf{1.011} & \textbf{1.001} & \textbf{95.4\%} & \textbf{0.97, 0.98, 1.04, 1.04, 1.00}\\
+$\varepsilon\,[\sum_i(C_iA_i)^2]^{1/2}$ & 1.005 & 1.011 & 1.003 & 95.4\% & 1.01, 0.97, 1.03, 1.04, 1.00\\
+\bottomrule
+\end{tabular}
+\caption{Calibration of the smooth model on the 1,000 test spectra, for four treatments of the
+systematic, each determined on the quick-test rows. For a standard normal, $|z|<2$ holds for
+95.4\% of cases.}
+\label{tab:calib}
+\end{table}
+
+\begin{itemize}
+  \item With the model-error term the pulls have unit width overall, below and above 555~GeV,
+    and in every fifth of cancellation. The most cancelling test spectrum goes from
+    $\langle z^2\rangle = 33.7$ to 1.9.
+  \item On average the systematic is modest. It enlarges the total width by a median factor of
+    only 1.014 over the noise (1.083 in the most cancelling fifth). The relative systematic on
+    the cross section of a bin, $\delta/|f|$, has a median of 0.5\% below 555~GeV and 1.5\%
+    overall, but reaches 20\% or more in the 1\% of bins with the strongest cancellation.
+  \item The first bin (255--270~GeV) remains slightly under-covered (pull s.d.\ 1.15,
+    \cref{fig:model_error}b). The spectra rise steeply there, and finer knots at threshold may
+    help.
+\end{itemize}
+
+\subsection{Using the systematic}
+\label{sec:using_syst}
+
+\paragraph{One bin.} \code{model.spectrum(theta)} returns, for each bin, the prediction and
+$\sqrt{\sfit^2 + \delta^2}$; \code{discrepancy=False} gives $\sfit$ alone. To compare with a
+POWHEG sample, add its Poisson noise.
+
+\paragraph{Sums over bins.} The model-error term is treated as independent between bins, but
+\cref{tab:cancel} shows that the underlying errors are correlated over 5--8 bins. For a
+cross section summed over many bins the truth lies between two limits: independent bins,
+$\big(\sum_k\delta_k^2\big)^{1/2}$, and fully correlated bins, $\sum_k\delta_k$. For the SM in
+255--1455~GeV:
+\begin{equation}
+  \sigma_{\text{SM}} = 28.11~\text{fb}, \qquad \sfit = 0.006~\text{fb}, \qquad
+  0.031~\text{fb} \le \delta \le 0.17~\text{fb} .
+\end{equation}
+The systematic exceeds the fit uncertainty by a factor of 5 to 30. It is still small (at most
+0.6\%), because the SM spectrum is only moderately cancelling overall ($R = 0.25$). Locally,
+however, the SM is strongly cancelling near threshold, where the box and triangle diagrams
+interfere destructively: the relative systematic is 5.5\% in the 255--270~GeV bin, against
+0.6\% at 600~GeV.
+
+\paragraph{In a likelihood.} In an analysis the systematic can be represented as a nuisance
+parameter per bin (or per group of correlated bins), with a Gaussian constraint of width
+$\delta_k$, in the usual way. This is the frequentist counterpart of the ``model discrepancy''
+term of Kennedy and O'Hagan~\cite{kennedyohagan}, which adds to a simulator's output a random
+function describing the simulator's own inadequacy.
+
+\subsection{Where does it come from? Open questions}
+\label{sec:origin}
+
+\begin{itemize}
+  \item \textbf{The generator.} By the argument of \cref{sec:why}, the departures are smooth in
+    $\mhh$ within a run and vary from run to run. A likely candidate is the numerical
+    evaluation of the two-loop virtual amplitudes, which in the POWHEG \code{ggHH}
+    implementation are interpolated from pre-computed grids, together with each run's own
+    Monte Carlo integration. Questions for the colleagues who produced the samples: were the
+    HEFT points independent runs with independent seeds and grids? What relative precision is
+    quoted for the virtual amplitudes? Were there negative-weight events? Regenerating a few
+    strongly cancelling spectra at higher precision would settle the matter.
+  \item \textbf{Or the form.} Alternatively, some ingredient of the generation could depend on
+    $\theta$ (\cref{eq:factorised} and the box that follows it), in which case the 23-term form
+    itself would be incomplete for these samples. A diagnostic: such a departure would vary
+    smoothly with $\theta$, so the residual shapes of test spectra close together in $\theta$
+    would be similar. Run-to-run numerical errors would make them unrelated.
+  \item \textbf{The rise at high mass.} $\varepsilon$ grows to 3.7\% at 1.45~TeV, where the bins
+    hold about 20 events. Whether this reflects the generator's precision at high mass, the
+    overflow above 1500~GeV, or the limits of measuring $\varepsilon$ from so few events is
+    open. It matters little for the cross section, which is small there.
+  \item \textbf{Its effect on the $a_i$.} Refitting with $\delta^2$ added to the variances
+    (``second pass'') leaves the calibration unchanged (pull s.d.\ 1.003) but fits the
+    cancelling spectra less closely ($-2\ln\lambda$ near threshold 1.87 against 1.57). Since
+    the purpose of the model is to reproduce POWHEG, the first pass is the primary model. The
+    difference between the passes measures how much the individual $a_i$ depend on the
+    treatment of the cancelling spectra.
+  \item \textbf{Improvements.} A Gaussian-process systematic with amplitude $\delta$ and a
+    correlation length fitted to the residuals would replace the two limits above with one
+    number for any sum over bins.
+\end{itemize}
+
+
+% ===========================================================================
+\section{Accuracy and other checks}
+\label{sec:validation}
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{lcccc}
+\toprule
+ & \multicolumn{2}{c}{mean $-2\ln\lambda$ per bin} & median & parameters\\
+model & 255--555 GeV & $>555$ GeV & per spectrum & \\
+\midrule
+\textbf{smooth model} & \textbf{1.566} & \textbf{1.100} & \textbf{1.078} & 946\\
+free fit per bin (benchmark) & 1.559 & 1.105 & 1.075 & 1,840\\
+network ensemble (cross-check) & 1.561 & 1.121 & 1.085 & $20\times3{,}944$\\
+\bottomrule
+\end{tabular}
+\caption{Accuracy on the 1,000 test spectra; 1 is the value for a perfect model with Poisson
+noise only. The common excess below 555~GeV is the systematic of \cref{sec:systematic}.}
+\label{tab:accuracy}
+\end{table}
+
+\begin{itemize}
+  \item \textbf{Accuracy} (\cref{tab:accuracy}). The smooth model is as accurate as the free
+    fit with half as many parameters, and slightly better than the networks above 555~GeV,
+    where the networks were trained with observed-count weights and are biased low.
+  \item \textbf{Inside a bin: the merged-bin test.} Fitted to the training spectra merged into
+    30~GeV bins, the model predicts how each 30~GeV bin of the test spectra splits into two
+    15~GeV bins to within the noise above about 360~GeV ($\chi^2\approx1$). The free fit can
+    only halve each value, and is up to 30 times worse. Below 345~GeV the threshold rise has
+    structure finer than 30~GeV.
+  \item \textbf{Between bin centres.} The model is a density, defined at every $m$. The networks,
+    by contrast, are constrained only at the bin centres, and below 400~GeV their spread between
+    the centres is 20--90 times larger than at them (\file{docs/paper/fig_interpolation.pdf}).
+  \item \textbf{Sensitivity.} $J = 30$, 40 and 60 give the same accuracy and calibration to within
+    0.01; the evidence prefers $J = 40$.
+  \item \textbf{Range.} Predicting the unused bins, 240--255~GeV comes out 8\% high, while
+    1455--1500~GeV is unreliable (the splines there are fixed by the prior alone). \textbf{Use the
+    model on 250--1455~GeV only.}
+  \item \textbf{The coefficient functions} (\cref{fig:coefficients}) are smooth, with exact
+    bands, and agree with the networks except for the least constrained ones. $a_{16}$--$a_{20}$,
+    whose monomials are small or nearly degenerate over the sampled $\theta$, are determined to
+    20--75\%. Their uncertainty is large but exact, and it propagates correctly into every
+    prediction.
+\end{itemize}
+
+\begin{figure}[p]
+\centering
+\includegraphics[width=0.9\textwidth]{fig_coefficients.pdf}
+\caption{The 23 coefficient functions $a_i(m_{hh})$ of the smooth model, shown as
+$15\,\text{GeV}\times a_i$, the cross section per 15~GeV multiplying the monomial $C_i(\theta)$
+in each panel, so that $d\sigma/dm_{hh} = \sum_i C_i(\theta)\,a_i(m_{hh})$. Line: posterior mean;
+band: exact $\pm1\sigma$; red points: the per-bin values of the network ensemble, for comparison.
+Units are fb, or ab for the eight smallest functions. The functions whose monomials are small
+or nearly degenerate over the sampled HEFT points ($a_{16}$--$a_{20}$) are the least well
+determined.}
+\label{fig:coefficients}
+\end{figure}
+
+% ===========================================================================
+\section{Using the model}
+\label{sec:using}
+
+The fitted model is a single file, \file{code/runs/SMOOTH_J40/smooth_model.npz} (about 7~MB:
+the breakpoints, $\hat\bbeta$, $H$, the $\lambda_i$ and the three numbers of $\varepsilon$). It is
+written by \file{code/heft_smooth.ipynb} ($\approx$ 75~s on a laptop CPU). Using it needs only
+NumPy and SciPy, not PyTorch:
+\begin{lstlisting}
+import numpy as np
+from dihiggs.smooth import SmoothHEFT, heft_monomials
+
+model = SmoothHEFT.load('runs/SMOOTH_J40/smooth_model.npz')
+
+theta = [[1.0, 1.0, 0.0, 0.0, 0.0],      # (klambda, ct, ctt, cggh, cgghh): the SM
+         [2.0, 1.0, 0.0, 0.0, 0.0]]      # one row per HEFT point
+
+# cross section (pb) in the 80 bins of 15 GeV from 255 to 1455 GeV, and its
+# uncertainty: fit uncertainty and model-error term, added in quadrature
+sigma, sd = model.spectrum(theta)                     # arrays [2, 80]
+sigma, sd_fit = model.spectrum(theta, discrepancy=False)
+
+# any other binning within 250-1455 GeV
+sigma10, sd10 = model.spectrum(theta, edges=np.arange(260, 1451, 10))
+
+# the density d sigma/dm (pb/GeV) at any masses, with its fit uncertainty
+m = np.linspace(255, 1455, 1201)
+dens, dens_sd = model.dsigma_dm(theta, m)
+
+# the 23 coefficient functions a_i(m) with their bands, and epsilon(m)
+a, a_sd = model.coefficients(m)                       # arrays [len(m), 23]
+eps = model.epsilon(m)                                # a fraction: 0.00077 at threshold
+C = heft_monomials(theta)                             # the 23 monomials C_i(theta)
+\end{lstlisting}
+
+\begin{watch}[Wide bins and the model-error term]
+\code{spectrum} evaluates $\varepsilon$ at the centre of each bin. That is right for bins of
+15~GeV or narrower. For a wide bin it is not: one bin from 255 to 1455~GeV gives the SM
+$28.11\pm0.73$~fb, because $\varepsilon(855~\text{GeV}) = 0.65\%$ is applied to terms that come
+mostly from near threshold, where $\varepsilon$ is up to eight times smaller. For wide intervals, sum
+15~GeV bins and combine the $\delta_k$ with the limits of \cref{sec:using_syst} (here
+0.03--0.17~fb).
+\end{watch}
+
+% ===========================================================================
+\section{Cross-checks: the network and the Bayesian network}
+\label{sec:crosscheck}
+
+The first version of this project modelled the 23 functions with a neural network,
+\code{HEFTNet} (\file{dihiggs/heftnet.py}, \cref{fig:architecture}). The network keeps the exact
+polynomial in $\theta$ and learns only $a_i(\mhh) = P_i(\mhh)\,e^{Q_i(\mhh)}$. $P$ is a six-layer
+ReLU network with a $\tanh$ output, which supplies shape and sign. $Q$ is one linear layer,
+which supplies the overall size and an exponential fall-off. The network is trained with an
+L1 loss on the bin values at the bin centres, then fine-tuned with a Huber loss of the pulls.
+An ensemble of 20 networks (bootstrap of the training spectra) reaches the same accuracy floor
+as the smooth model (\cref{tab:accuracy}). With the same model-error term its pulls are
+calibrated equally well (s.d.\ 1.004).
+
+A Bayesian treatment of the network was also studied. Hamiltonian Monte Carlo could not explore
+the posterior, whose curvatures span many orders of magnitude, and gave bands of only 0.5\% of
+the noise. A mixture of linearised Laplace approximations about the 20 networks gives 2.4\% of
+the noise within and 5.6\% between networks (\file{docs/bnn/laplace_explained.pdf}). Like the
+smooth model, it needs the model-error term to be calibrated. This is the main lesson of the
+cross-checks: Bayes' theorem works, the parameter uncertainty of any 23-term model is genuinely
+small, and the dominant uncertainty is the systematic of \cref{sec:systematic}, which no
+parameter posterior of a 23-term model can contain.
+
+\begin{figure}[!htb]
 \centering
 \begin{tikzpicture}[
   font=\small,
@@ -336,13 +1017,13 @@ in a dot product.
 \node[box, text width=15mm, fill=white] (a) at (11.75,0.9)
   {$\ba(\mhh)$\\[1pt]\footnotesize $[N,23]$};
 \node[phys, text width=40mm] (c) at (6.35,-1.9)
-  {$\bc(\theta)$: the 23 monomials\\[1pt] of \cref{tab:monomials}\\[1pt]
+  {$\bC(\theta)$: the 23 monomials\\[1pt] of \cref{tab:monomials}\\[1pt]
    \footnotesize no trainable parameters};
 \node[box, text width=15mm, fill=white] (cv) at (11.75,-1.9)
-  {$\bc(\theta)$\\[1pt]\footnotesize $[N,23]$};
+  {$\bC(\theta)$\\[1pt]\footnotesize $[N,23]$};
 \node[op, minimum size=9mm] (dot) at (13.35,-0.5) {$\sum_i$};
 \node[box, text width=17mm, fill=white] (sig) at (15.15,-0.5)
-  {$\hat\sigma=\bc\cdot\ba$\\[1pt]\footnotesize $[N]$};
+  {$\hat\sigma=\bC\cdot\ba$\\[1pt]\footnotesize $[N]$};
 \node[box, text width=17mm, fill=orange!12, draw=orange!80!black] (loss) at (15.15,-2.3)
   {L1 loss\\[1pt] $|\sigma-\hat\sigma|$};
 \node[dat, text width=17mm] (t) at (15.15,-4.0)
@@ -376,196 +1057,35 @@ in a dot product.
 $\theta=(\kl,\ct,\ctt,\cggh,\cgghh)$, is split. The mass $\mhh$ feeds
 two small networks, $P$ and $Q$, which give the 23 functions
 $a_i(\mhh)=P_i(\mhh)\,e^{Q_i(\mhh)}$. The Wilson coefficients $\theta$ feed the
-23 known monomials $c_i(\theta)$. The prediction is the dot product $\bc\cdot\ba$,
+23 known monomials $C_i(\theta)$. The prediction is the dot product $\bC\cdot\ba$,
 which is compared with the POWHEG cross section using the absolute (L1) loss.
 Blue boxes are learned; the green box is fixed by physics.}
 \label{fig:architecture}
 \end{figure}
-
-\paragraph{The physics branch, $\bc(\theta)$.} The five Wilson coefficients are
-turned into the 23-component vector of monomials in \cref{tab:monomials}. This
-branch has no trainable parameters; it is simply \cref{eq:quadratic} and its NLO
-extension written as code (\code{torch.column\_stack} in \code{HEFTNet.forward}).
-
-\paragraph{The learned branch, $\ba(\mhh)$.} The mass alone determines the 23
-functions, through
-\begin{equation}
-  a_i(\mhh) = P_i(\mhh)\; e^{\,Q_i(\mhh)}, \qquad i = 1,\dots,23,
-  \label{eq:PQ}
-\end{equation}
-where
-\begin{itemize}
-  \item $P$ is a fully connected network with one input and 23 outputs:
-  a $1\to25$ layer, five $25\to25$ layers, each followed by a ReLU, and a final
-  $25\to23$ layer followed by $\tanh$. This is 3\,898 parameters.
-  \item $Q$ is a single linear layer with one input and 23 outputs,
-  $Q_i(\mhh) = w_i\,\mhh + b_i$, which is 46 parameters.
-\end{itemize}
-
-\begin{aside}[Why the product $P\,e^{Q}$?]
-Because $Q_i$ is linear, $e^{Q_i(\mhh)} = e^{b_i}\,e^{w_i\mhh}$. The two factors
-have separate jobs, and $P_i$ has a third:
-\begin{itemize}
-  \item $e^{b_i}$ sets the \emph{overall size} of $a_i$. The 23 functions can
-  differ in magnitude by orders of magnitude. Learning $b_i$, a logarithm of the
-  size, is far easier for gradient descent than learning a tiny or huge number
-  directly.
-  \item $e^{w_i\mhh}$ supplies an \emph{exponential fall-off} with $\mhh$, which
-  is the gross behaviour of the spectra in \cref{fig:spectra}.
-  \item $P_i\in(-1,1)$ supplies the \emph{shape and the sign}. A sign is needed
-  because the interference functions can be negative. The $\tanh$ keeps $P_i$
-  bounded, so the magnitude is always controlled by $e^{Q_i}$.
-\end{itemize}
-In short, $e^{Q}$ is a simple learned envelope and $P$ is a learned, bounded
-correction to it.
-\end{aside}
-
-\paragraph{The prediction.} For an input row
-$\boldsymbol{x}=(\mhh,\kl,\ct,\ctt,\cggh,\cgghh)$ the output is
-\begin{equation}
-  \hat\sigma(\boldsymbol{x}) = \sum_{i=1}^{23} c_i(\theta)\,P_i(\mhh)\,e^{Q_i(\mhh)} .
-\end{equation}
-\Cref{tab:shapes} follows the tensors through \code{HEFTNet.forward} for a
-batch of $N$ rows.
-
-\begin{table}[h]
-\centering
-\begin{tabular}{lll}
-\toprule
-step in \code{forward} & tensor & shape\\
-\midrule
-input batch & $\boldsymbol{x}$ & $[N,6]$\\
-split columns & $\mhh,\kl,\ct,\ctt,\cggh,\cgghh$ & six of $[N]$\\
-monomials (\code{column\_stack}) & $\bc(\theta)$ & $[N,23]$\\
-reshape mass & $\mhh$ & $[N,1]$\\
-networks & $P(\mhh)$, $Q(\mhh)$ & $[N,23]$ each\\
-coefficients (\code{coeffs}) & $\ba = P\odot e^{Q}$ & $[N,23]$\\
-row-wise dot product & $\hat\sigma = \sum_i c_i a_i$ & $[N]$\\
-\bottomrule
-\end{tabular}
-\caption{Tensor shapes in \code{HEFTNet.forward}.}
-\label{tab:shapes}
-\end{table}
-
-\subsection{What the structure buys us}
-
-\begin{enumerate}
-  \item \textbf{Exact dependence on the couplings.} For any $\theta$, including
-  values outside the training region, the prediction has exactly the right
-  polynomial form. Only the $a_i$ are approximated. A generic network with all six
-  inputs would have to discover this polynomial from data and could not
-  extrapolate it.
-  \item \textbf{A one-dimensional learning problem.} The network sees only
-  $\mhh$. Learning 23 smooth functions of one variable is much easier than
-  learning one function of six variables.
-  \item \textbf{Interpretable outputs.} The $a_i(\mhh)$ are physical quantities,
-  namely the interference kernels, and can be plotted and compared with the
-  binned $dA_i$ of Ref.~\cite{alasfar}. \code{heft\_test.ipynb} plots them.
-  \item \textbf{A continuous function of $\mhh$.} The model can be evaluated at
-  any $\mhh$, not just at bin centres.
-\end{enumerate}
-
-% ===========================================================================
-\section{The data}
-\label{sec:data}
-
-\paragraph{Spectra.} The file \file{data/powheg_total_gauss_params_13TeV.csv.gz}
-contains 4\,999 POWHEG NLO spectra at $\sqrt{s}=13$~TeV. Each row holds one
-parameter point $\theta$ and the cross section in pb in 100 bins of 15~GeV. The
-parameter points are scattered roughly as Gaussians centred on the SM point, with
-standard deviations of about 5 for $\kl$ and about 2 for the other four
-coefficients. Hence the name ``wide Gauss''.
-
-\paragraph{Bins and the mass variable.} Bins 0--15 are empty, and bin 16
-straddles the threshold $\mhh = 2m_h = 250$~GeV: the POWHEG histograms start at
-0~GeV with 15~GeV bins, so bin $k$ covers $[15k,\,15(k+1))$~GeV. \code{heft\_prepare\_data.ipynb} keeps bins
-17--96, that is $255 \le \mhh < 1455$~GeV, and maps them to a dimensionless
-variable on the unit interval with bins of width $0.01$:
-\begin{equation}
-  x = \frac{\mhh - 255~\text{GeV}}{1500~\text{GeV}}, \qquad
-  x_k = \frac{k - 17 + \tfrac12}{100}, \quad k = 17,\dots,96 .
-\end{equation}
-In the code, the column called \code{mhh} holds this $x$, which runs from $0.005$
-to $0.795$. Keeping the network input of order one is good practice.
-
-\paragraph{From spectra to training rows.} After shuffling the spectra:
-\begin{itemize}
-  \item the first 500 are set aside, untouched, as the test set
-  (\file{heft_wide_gauss_testdata_13TeV.csv});
-  \item each of the remaining 4\,499 spectra is ``diced'' into 80 rows
-  $(\theta, x_k, \sigma_k)$, one per bin. Rows with $\sigma_k=0$ are dropped and
-  the rows are shuffled, leaving 357\,958 rows
-  (\file{heft_wide_gauss_traindata_13TeV.csv.gz}).
-\end{itemize}
-Dicing is what makes the problem a standard regression: every row is one
-example, input $\boldsymbol{x}=(x_k,\theta)$ and target $\sigma_k$.
-
-% ===========================================================================
-\section{Training}
-\label{sec:training}
-
-\paragraph{Splits.} \code{heft\_train.ipynb} splits the 357\,958 rows into
-301\,056 for training ($=147$ batches of 2\,048), 6\,902 for validation, and 50\,000
-for a quick test. A random subset of the training rows, of the same size as the
-validation set, is used to compare training and validation losses, which is a
-check for overfitting.
-
-\paragraph{Loss.} The parameters $\omega$ of $P$ and $Q$ are found by minimising
-the empirical risk with the absolute (L1) loss,
-\begin{equation}
-  R(\omega) = \frac{1}{M}\sum_{m=1}^{M}
-  \big|\,\sigma_m - \bc(\theta_m)\cdot\ba(x_m;\omega)\,\big| .
-\end{equation}
-The minimiser of the expected absolute loss is the conditional
-\emph{median} of the target given the input. With the squared loss it would be the
-conditional mean. For simulated spectra the target is a deterministic function
-of the input up to Monte Carlo noise, so both would give essentially the same
-function. The L1 loss is less sensitive to occasional large fluctuations.
-
-\paragraph{Optimisation.} Adam with mini-batches of 2\,048 rows for 200\,000
-iterations, about 1\,360 passes through the training set. The learning rate starts
-at $2\times10^{-3}$ and is halved every 50\,000 iterations, giving four steps:
-$2\times10^{-3}$, $10^{-3}$, $5\times10^{-4}$, $2.5\times10^{-4}$.
-Every 100 iterations the average losses on the training subset and the validation
-set are recorded. The parameters are saved whenever the validation loss drops by
-more than 1.5\% below its best value so far.
-
-% ===========================================================================
-\section{Testing}
-\label{sec:testing}
-
-\code{heft\_test.ipynb} reloads the saved parameters and does two things.
-\begin{enumerate}
-  \item It plots the 23 learned functions $a_i(\mhh)$, the quantities the network
-  was built to find.
-  \item For each of the 500 held-out spectra it evaluates $\hat\sigma$ at the 80
-  bin centres and overlays the result on the POWHEG histogram. None of these
-  parameter points was used in training. The test is therefore a direct check of
-  how well the model \emph{interpolates in $\theta$}, which is the property needed
-  for reweighting.
-\end{enumerate}
 
 % ===========================================================================
 \section{Points worth noticing}
 \label{sec:notes}
 
 \begin{itemize}
-  \item \textbf{Positivity is not enforced.} Nothing forces $\hat\sigma\ge0$, nor
-  the diagonal kernels to be non-negative. A well-trained model should be very
-  close to non-negative where there are data, but it is worth checking near the
-  dips.
-  \item \textbf{The absolute loss weights rows by their size.} The targets span
-  roughly $10^{-6}$ to $30$~pb per bin. An absolute error of $10^{-4}$~pb is
-  negligible for a large spectrum but a large \emph{relative} error for a small
-  one. Training is therefore dominated by the larger cross sections. A relative or
-  logarithmic loss would weight the spectra more evenly, at the price of different
-  statistical properties.
-  \item \textbf{Identifiability.} At a fixed $\mhh$, $\sigma$ is linear in the 23
-  unknowns $a_i$. They are determined uniquely only if the 23 monomials evaluated
-  at the training points are linearly independent. With thousands of
-  random $\theta$ points spread widely, as here, they are. With a few points close
-  to the SM, they would not be.
+  \item \textbf{Positivity is not enforced.} Nothing forces $d\sigma/dm \ge 0$. On the test spectra
+    all 80,000 bin predictions are positive, but near deep interference dips at other $\theta$ it is
+    worth checking.
+  \item \textbf{Identifiability.} At fixed $m$, the density is linear in the 23 unknowns $a_i$.
+    They are determined only if the 23 monomials, evaluated at the training points, are linearly
+    independent. With thousands of widely spread $\theta$ points they are, although some
+    combinations ($a_{16}$--$a_{20}$) only weakly. With a few points close to the SM they would not
+    be.
+  \item \textbf{Correlations.} The posterior covariance $H^{-1}$ correlates every prediction with
+    every other. For a single bin this does not matter. For sums over bins, or for joint fits of
+    several spectra, use $H^{-1}$ through \code{SmoothHEFT.predict} with the summed basis
+    integrals, rather than adding per-bin uncertainties.
+  \item \textbf{Reproducibility.} There is no training: the same data give the same model to
+    machine precision, and the paper figures are regenerated from
+    \file{runs/SMOOTH_J40/smooth_model.npz} by the scripts in \file{docs/paper/} (shared code in
+    \file{smooth_common.py}).
 \end{itemize}
+
 
 % ===========================================================================
 \appendix
@@ -578,7 +1098,7 @@ more than 1.5\% below its best value so far.
 \renewcommand{\arraystretch}{1.3}
 \begin{tabular}{rll@{\hspace{2.5em}}rll}
 \toprule
-$i$ & $c_i(\theta)$ & origin & $i$ & $c_i(\theta)$ & origin\\
+$i$ & $C_i(\theta)$ & origin & $i$ & $C_i(\theta)$ & origin\\
 \midrule
 1  & $\ct^4$            & $v_1v_1$ & 13 & $\kl^2\cggh\ct$      & $v_2v_4$\\
 2  & $\ctt^2$           & $v_3v_3$ & 14 & $\cgghh\ct\kl$       & $v_2v_5$\\
@@ -594,7 +1114,7 @@ $i$ & $c_i(\theta)$ & origin & $i$ & $c_i(\theta)$ & origin\\
 12 & $\cgghh\ct^2$      & $v_1v_5$ &    &                      & \\
 \bottomrule
 \end{tabular}
-\caption{The monomials in the order used in \code{heftnet.py}, which is also the
+\caption{The monomials in the order used in \code{heftnet.py} and \code{smooth.heft\_monomials}, which is also the
 order of Eq.~(4.1) of Ref.~\cite{alasfar}. Terms 1--15 are the products $v_iv_j$
 of the LO coupling factors in \cref{eq:v} and suffice at LO. Terms 16--23 appear
 at NLO. Their ``origin'' column shows them as an NLO coupling factor
@@ -604,20 +1124,30 @@ at NLO. Their ``origin'' column shows them as an NLO coupling factor
 \label{tab:monomials}
 \end{table}
 
+
+
 % ===========================================================================
-\begin{thebibliography}{9}
-\bibitem{alasfar} L.~Alasfar \emph{et al.}, \emph{Effective Field Theory
-  descriptions of Higgs boson pair production}, LHC Higgs Working Group public
-  note, \href{https://arxiv.org/abs/2304.01968}{arXiv:2304.01968}
-  (included in this repository as \code{docs/theory.pdf}).
-\bibitem{lee} N.~Dalmasso, L.~Masserano, D.~Zhao, R.~Izbicki and A.~B.~Lee,
-  \emph{Likelihood-free frequentist inference: bridging classical statistics
-  and machine learning for reliable simulator-based inference},
-  \href{https://arxiv.org/abs/2107.03920}{arXiv:2107.03920}.
-\bibitem{alkadhim} A.~Al~Kadhim \emph{et al.}, \emph{Amortized simulation-based
-  frequentist inference for tractable and intractable likelihoods},
-  Mach.\ Learn.: Sci.\ Technol.\ (2024),
+\begin{thebibliography}{99}
+\bibitem{alasfar} L.~Alasfar \emph{et al.}, \emph{Effective Field Theory descriptions of Higgs
+  boson pair production}, LHC Higgs Working Group public note,
+  \href{https://arxiv.org/abs/2304.01968}{arXiv:2304.01968} (in this repository as
+  \code{docs/theory.pdf}).
+\bibitem{lee} N.~Dalmasso, L.~Masserano, D.~Zhao, R.~Izbicki and A.~B.~Lee, \emph{Likelihood-free
+  frequentist inference: bridging classical statistics and machine learning for reliable
+  simulator-based inference}, \href{https://arxiv.org/abs/2107.03920}{arXiv:2107.03920}.
+\bibitem{alkadhim} A.~Al~Kadhim \emph{et al.}, \emph{Amortized simulation-based frequentist
+  inference for tractable and intractable likelihoods}, Mach.\ Learn.: Sci.\ Technol.\ (2024),
   \href{https://iopscience.iop.org/article/10.1088/2632-2153/ad218e}{doi:10.1088/2632-2153/ad218e}.
+\bibitem{deboor} C.~de~Boor, \emph{A Practical Guide to Splines}, Springer (1978).
+\bibitem{eilers} P.~H.~C.~Eilers and B.~D.~Marx, \emph{Flexible smoothing with B-splines and
+  penalties}, Statist.\ Sci.\ \textbf{11} (1996) 89.
+\bibitem{mackay} D.~J.~C.~MacKay, \emph{Bayesian interpolation}, Neural Comput.\ \textbf{4}
+  (1992) 415.
+\bibitem{bakercousins} S.~Baker and R.~D.~Cousins, \emph{Clarification of the use of chi-square
+  and likelihood functions in fits to histograms}, Nucl.\ Instrum.\ Meth.\ \textbf{221} (1984) 437.
+\bibitem{kennedyohagan} M.~C.~Kennedy and A.~O'Hagan, \emph{Bayesian calibration of computer
+  models}, J.\ R.\ Statist.\ Soc.\ B \textbf{63} (2001) 425.
 \end{thebibliography}
+
 
 \end{document}

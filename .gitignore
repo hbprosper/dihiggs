@@ -185,3 +185,7 @@ code/runs/**/*.txt
 
 # Meeting slides are kept locally, not in the repo
 meetings/
+
+# Caches written by the paper figure scripts (rebuilt automatically)
+docs/paper/smooth_test.npz
+docs/paper/interp.npz
