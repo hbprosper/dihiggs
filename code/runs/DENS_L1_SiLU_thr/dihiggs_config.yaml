@@ -1,0 +1,39 @@
+name: dihiggs
+file:
+  losses: runs/DENS_L1_SiLU_thr/dihiggs_losses.csv
+  params: runs/DENS_L1_SiLU_thr/dihiggs_params.pth
+  init_params: runs/DENS_L1_SiLU_thr/dihiggs_init_params.pth
+  plots: runs/DENS_L1_SiLU_thr/dihiggs_plots.png
+  config: runs/DENS_L1_SiLU_thr/dihiggs_config.yaml
+model_name: heftnet
+features:
+- mhh
+- klambda
+- CT
+- CTT
+- CGGH
+- CGGHH
+target: sigma
+model: density
+activation: nn.SiLU
+density:
+  threshold: true
+  n_nodes: 8
+  input_map: sqrt
+traindata_sha256: af0b220986b01474216e6cecaa236cb5b2aabe5a6c5e818520314b28e59e7d68
+loss: L1
+positivity: false
+lambda: 0.0
+loss_scale: 0.011832306161522851
+N_eff: 38023.64035688934
+batch_size: 2048
+train_size: 269710
+test_size: 41249
+val_size: 6347
+monitor_step: 100
+frac: 0.015
+n_steps: 4
+n_iterations: 200000
+n_iters_per_step: 50000
+base_lr: 0.002
+gamma: 0.5

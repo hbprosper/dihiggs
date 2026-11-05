@@ -1,0 +1,479 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>dihiggs Repository Guide</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Spectral:wght@500;600&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a single reading column with a sticky section index on wide screens; tables and file lists, not cards. */
+:root {
+  --bg: #F6F6F3;          /* logbook paper, slightly green-grey */
+  --surface: #FFFFFF;
+  --ink: #1D2321;
+  --muted: #5B6461;
+  --rule: #DADDD7;
+  --accent: #782F40;      /* FSU garnet, as in the group's slide template */
+  --gold: #A88B4A;        /* FSU gold, darkened for text on paper */
+  --gold-soft: #EFE6CF;
+  --ok: #2F6B4F; --ok-soft: #E1EFE7;
+  --check: #2D5A86; --check-soft: #E2EBF5;
+  --old: #6E6A64; --old-soft: #ECEAE6;
+  --code-bg: #EFF0EC;
+  --display: "Spectral", Georgia, "Times New Roman", serif;
+  --body: "IBM Plex Sans", -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #141716; --surface: #1C201F; --ink: #E7E8E4; --muted: #A2AAA6; --rule: #2F3533;
+    --accent: #E09AAA; --gold: #D8C08A; --gold-soft: #3A3324;
+    --ok: #8BD1AE; --ok-soft: #1F3329; --check: #9DC1E8; --check-soft: #1E2B3A;
+    --old: #B4AFA8; --old-soft: #2B2A28; --code-bg: #222726; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #141716; --surface: #1C201F; --ink: #E7E8E4; --muted: #A2AAA6; --rule: #2F3533;
+  --accent: #E09AAA; --gold: #D8C08A; --gold-soft: #3A3324;
+  --ok: #8BD1AE; --ok-soft: #1F3329; --check: #9DC1E8; --check-soft: #1E2B3A;
+  --old: #B4AFA8; --old-soft: #2B2A28; --code-bg: #222726; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 1rem; line-height: 1.55;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+a:hover { text-decoration-thickness: 2px; }
+a:focus-visible, button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+code, .path { font-family: var(--mono); font-size: 0.86em; }
+.wrap { max-width: 1120px; margin: 0 auto; padding-block: 40px 64px; display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 48px; }
+@media (max-width: 860px) { .wrap { grid-template-columns: minmax(0, 1fr); gap: 0; padding-block: 24px 48px; } nav.index { display: none; } }
+
+/* ---- index ---- */
+nav.index { position: sticky; top: calc(24px + env(safe-area-inset-top, 0px)); align-self: start; font-size: 0.88rem; }
+nav.index p { margin: 0 0 8px; font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+nav.index ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+nav.index a { color: var(--ink); text-decoration: none; }
+nav.index a:hover { color: var(--accent); }
+
+main { min-width: 0; }
+header.top { border-bottom: 1px solid var(--rule); padding-bottom: 28px; margin-bottom: 8px; }
+.eyebrow { font-size: 0.75rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--gold); font-weight: 600; margin: 0 0 6px; }
+h1 { font-family: var(--display); font-weight: 600; font-size: clamp(2rem, 4.5vw, 2.8rem); line-height: 1.1; margin: 0 0 12px; text-wrap: balance; }
+h2 { font-family: var(--display); font-weight: 600; font-size: 1.6rem; line-height: 1.2; margin: 0 0 6px; text-wrap: balance; }
+h3 { font-size: 1.02rem; font-weight: 600; margin: 0 0 4px; }
+.lede { font-size: 1.12rem; max-width: 64ch; margin: 0 0 20px; }
+.authors { color: var(--muted); font-size: 0.9rem; margin: 0; }
+section { padding-block: 36px 8px; border-bottom: 1px solid var(--rule); }
+section:last-of-type { border-bottom: 0; }
+.intro { color: var(--muted); max-width: 66ch; margin: 0 0 20px; }
+
+/* spectrum figure */
+figure.spectrum { margin: 24px 0 18px; }
+figure.spectrum svg { width: 100%; height: auto; display: block; }
+figure.spectrum .axis { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 0.75rem; color: var(--muted); margin-top: 4px; }
+figure.spectrum .axis { position: relative; }
+figure.spectrum .axis .pk { position: absolute; left: 9.2%; }
+figure.spectrum figcaption { font-size: 0.82rem; color: var(--muted); margin-top: 6px; display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.facts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; border: 1px solid var(--rule); border-radius: 6px; background: var(--surface); }
+.facts div { padding: 12px 14px; border-left: 1px solid var(--rule); }
+.facts div:first-child { border-left: 0; }
+.facts b { display: block; font-family: var(--mono); font-weight: 500; font-size: 0.98rem; font-variant-numeric: tabular-nums; }
+.facts span { font-size: 0.8rem; color: var(--muted); }
+@media (max-width: 640px) { .facts { grid-template-columns: repeat(2, minmax(0, 1fr)); } .facts div:nth-child(3) { border-left: 0; } .facts div:nth-child(n+3) { border-top: 1px solid var(--rule); } }
+
+/* start-here paths */
+.paths { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr) minmax(0, 1fr); gap: 16px; }
+@media (max-width: 900px) { .paths { grid-template-columns: minmax(0, 1fr); } }
+.path-card { background: var(--surface); border: 1px solid var(--rule); border-top: 3px solid var(--accent); border-radius: 4px; padding: 16px 18px; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+.path-card p { margin: 0; font-size: 0.93rem; }
+.path-card a { overflow-wrap: anywhere; }
+.path-card ol { margin: 0; padding-left: 1.2em; font-size: 0.93rem; display: grid; gap: 6px; }
+pre { background: var(--code-bg); border-radius: 4px; padding: 10px 12px; margin: 0; overflow-x: auto; font-family: var(--mono); font-size: 0.8rem; line-height: 1.5; color: var(--ink); }
+.c { color: var(--muted); }
+
+/* status chips */
+.chip { display: inline-block; font-size: 0.7rem; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; padding: 2px 7px; border-radius: 3px; white-space: nowrap; vertical-align: 1px; }
+.chip.ok { color: var(--ok); background: var(--ok-soft); }
+.chip.check { color: var(--check); background: var(--check-soft); }
+.chip.old { color: var(--old); background: var(--old-soft); }
+.chip.plan { color: var(--gold); background: var(--gold-soft); }
+
+/* tables */
+.tbl { overflow-x: auto; border: 1px solid var(--rule); border-radius: 4px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: 0.92rem; }
+th, td { text-align: left; vertical-align: top; padding: 9px 12px; border-bottom: 1px solid var(--rule); }
+tr:last-child td { border-bottom: 0; }
+th { font-size: 0.74rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); font-weight: 600; background: var(--bg); }
+td.num, th.num { text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+td .path { white-space: nowrap; }
+tr.hl td { background: var(--ok-soft); }
+
+/* pipeline */
+.pipe { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; counter-reset: step; }
+.pipe > li { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 14px; padding: 14px 0; border-top: 1px solid var(--rule); }
+.pipe > li:first-child { border-top: 0; }
+.pipe .n { font-family: var(--display); font-size: 1.5rem; color: var(--accent); line-height: 1; padding-top: 2px; }
+.pipe p { margin: 2px 0 0; font-size: 0.93rem; }
+.pipe .out { font-size: 0.85rem; color: var(--muted); }
+.branch { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 8px; }
+@media (max-width: 640px) { .branch { grid-template-columns: minmax(0, 1fr); } }
+.branch > div { border-left: 2px solid var(--rule); padding-left: 12px; min-width: 0; }
+
+/* document list */
+.filter { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 0 0 18px; }
+.filter input { font: inherit; font-size: 0.95rem; padding: 8px 12px; border: 1px solid var(--rule); border-radius: 4px; background: var(--surface); color: var(--ink); width: min(100%, 360px); }
+.filter .count { font-size: 0.85rem; color: var(--muted); }
+.group { margin: 0 0 22px; }
+.group h3 { font-family: var(--display); font-size: 1.15rem; font-weight: 600; margin: 0 0 8px; }
+.docs { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--rule); }
+.docs li { display: grid; grid-template-columns: minmax(0, 15rem) minmax(0, 1fr) auto; gap: 14px; align-items: baseline; padding: 8px 0; border-bottom: 1px solid var(--rule); }
+.docs li .path a { overflow-wrap: anywhere; }
+.docs li p { margin: 0; font-size: 0.92rem; }
+@media (max-width: 640px) { .docs li { grid-template-columns: minmax(0, 1fr) auto; } .docs li p { grid-column: 1 / -1; } }
+.none { color: var(--muted); font-size: 0.92rem; }
+
+/* glossary */
+dl.gloss { display: grid; grid-template-columns: minmax(0, 13rem) minmax(0, 1fr); gap: 10px 20px; margin: 0; }
+dl.gloss dt { font-weight: 600; }
+dl.gloss dd { margin: 0; font-size: 0.94rem; max-width: 70ch; }
+@media (max-width: 640px) { dl.gloss { grid-template-columns: minmax(0, 1fr); gap: 2px; } dl.gloss dd { margin-bottom: 10px; } }
+
+footer { color: var(--muted); font-size: 0.85rem; padding-top: 28px; }
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+html { scroll-behavior: smooth; }
+section[id] { scroll-margin-top: 16px; }
+</style>
+</head><body>
+
+<div class="wrap">
+<nav class="index" aria-label="Sections">
+  <p>On this page</p>
+  <ol>
+    <li><a href="#start">Start here</a></li>
+    <li><a href="#status">Where things stand</a></li>
+    <li><a href="#pipeline">The pipeline</a></li>
+    <li><a href="#code">Code</a></li>
+    <li><a href="#data">Data</a></li>
+    <li><a href="#documents">Documents</a></li>
+    <li><a href="#runs">Run folders</a></li>
+    <li><a href="#terms">Terms</a></li>
+  </ol>
+</nav>
+
+<main>
+<header class="top">
+  <p class="eyebrow">github.com/hbprosper/dihiggs</p>
+  <h1>A guide to the dihiggs repository</h1>
+  <p class="lede">This repository models the gluon-fusion di-Higgs cross section, d&sigma;/dm<sub>hh</sub>, as a function of five HEFT Wilson coefficients, from 4,999 POWHEG NLO spectra. It also holds the notes that record how the model was built and tested. This page tells you what to read first, what to run, and where everything lives.</p>
+  <p class="authors">P. Bhat (Fermilab), N. De Filippis (Politecnico di Bari), K.F. Johnson, H.B. Prosper, R. Starnes (Florida State University)</p>
+
+  <figure class="spectrum">
+    <svg viewBox="0 0 800 122" role="img" aria-label="The Standard Model di-Higgs spectrum predicted by the smooth model, in 80 bins of 15 GeV from 255 to 1455 GeV; it rises steeply from threshold, peaks near 375 GeV and falls off.">
+      <path d="M0,120 L0.0,116.5 L10.0,116.5 L10.0,111.5 L20.0,111.5 L20.0,103.9 L30.0,103.9 L30.0,94.7 L40.0,94.7 L40.0,83.1 L50.0,83.1 L50.0,66.3 L60.0,66.3 L60.0,37.2 L70.0,37.2 L70.0,12.8 L80.0,12.8 L80.0,6.0 L90.0,6.0 L90.0,7.2 L100.0,7.2 L100.0,12.7 L110.0,12.7 L110.0,20.7 L120.0,20.7 L120.0,29.6 L130.0,29.6 L130.0,38.7 L140.0,38.7 L140.0,47.8 L150.0,47.8 L150.0,56.3 L160.0,56.3 L160.0,64.1 L170.0,64.1 L170.0,71.1 L180.0,71.1 L180.0,77.3 L190.0,77.3 L190.0,82.7 L200.0,82.7 L200.0,87.5 L210.0,87.5 L210.0,91.7 L220.0,91.7 L220.0,95.3 L230.0,95.3 L230.0,98.5 L240.0,98.5 L240.0,101.2 L250.0,101.2 L250.0,103.6 L260.0,103.6 L260.0,105.6 L270.0,105.6 L270.0,107.4 L280.0,107.4 L280.0,108.9 L290.0,108.9 L290.0,110.3 L300.0,110.3 L300.0,111.4 L310.0,111.4 L310.0,112.4 L320.0,112.4 L320.0,113.3 L330.0,113.3 L330.0,114.1 L340.0,114.1 L340.0,114.7 L350.0,114.7 L350.0,115.3 L360.0,115.3 L360.0,115.9 L370.0,115.9 L370.0,116.3 L380.0,116.3 L380.0,116.7 L390.0,116.7 L390.0,117.1 L400.0,117.1 L400.0,117.4 L410.0,117.4 L410.0,117.7 L420.0,117.7 L420.0,117.9 L430.0,117.9 L430.0,118.1 L440.0,118.1 L440.0,118.3 L450.0,118.3 L450.0,118.5 L460.0,118.5 L460.0,118.6 L470.0,118.6 L470.0,118.8 L480.0,118.8 L480.0,118.9 L490.0,118.9 L490.0,119.0 L500.0,119.0 L500.0,119.1 L510.0,119.1 L510.0,119.2 L520.0,119.2 L520.0,119.2 L530.0,119.2 L530.0,119.3 L540.0,119.3 L540.0,119.4 L550.0,119.4 L550.0,119.4 L560.0,119.4 L560.0,119.5 L570.0,119.5 L570.0,119.5 L580.0,119.5 L580.0,119.6 L590.0,119.6 L590.0,119.6 L600.0,119.6 L600.0,119.6 L610.0,119.6 L610.0,119.7 L620.0,119.7 L620.0,119.7 L630.0,119.7 L630.0,119.7 L640.0,119.7 L640.0,119.7 L650.0,119.7 L650.0,119.8 L660.0,119.8 L660.0,119.8 L670.0,119.8 L670.0,119.8 L680.0,119.8 L680.0,119.8 L690.0,119.8 L690.0,119.8 L700.0,119.8 L700.0,119.8 L710.0,119.8 L710.0,119.8 L720.0,119.8 L720.0,119.9 L730.0,119.9 L730.0,119.9 L740.0,119.9 L740.0,119.9 L750.0,119.9 L750.0,119.9 L760.0,119.9 L760.0,119.9 L770.0,119.9 L770.0,119.9 L780.0,119.9 L780.0,119.9 L790.0,119.9 L790.0,119.9 L800.0,119.9 L800,120 Z" style="fill:var(--gold-soft);stroke:var(--accent)" stroke-width="1.3" stroke-linejoin="round"/>
+      <line x1="0" y1="120.5" x2="800" y2="120.5" style="stroke:var(--rule)" stroke-width="1"/>
+
+    </svg>
+    <div class="axis"><span>255 GeV</span><span class="pk">&uarr; peak, 375 GeV</span><span>1455 GeV</span></div>
+    <figcaption><span>The SM spectrum from the smooth model: 28.1 fb in 255&ndash;1455 GeV, in the 80 bins of 15 GeV the whole project uses.</span><span>Each bin is predicted as the integral of d&sigma;/dm<sub>hh</sub> over the bin.</span></figcaption>
+  </figure>
+
+  <div class="facts" role="list">
+    <div role="listitem"><b>&theta; = (&kappa;<sub>&lambda;</sub>, c<sub>t</sub>, c<sub>tt</sub>, c<sub>ggh</sub>, c<sub>gghh</sub>)</b><span>the five HEFT coefficients</span></div>
+    <div role="listitem"><b>d&sigma;/dm = &Sigma; C<sub>i</sub>(&theta;) a<sub>i</sub>(m)</b><span>23 known monomials C<sub>i</sub>, 23 unknown functions a<sub>i</sub></span></div>
+    <div role="listitem"><b>80 bins, 255&ndash;1455 GeV</b><span>15 GeV each; 40,000 events per spectrum</span></div>
+    <div role="listitem"><b>3,989 + 1,000</b><span>spectra for fitting + test spectra never used in fitting</span></div>
+  </div>
+</header>
+
+<!-- ===================================================================== -->
+<section id="start">
+  <h2>Start here</h2>
+  <p class="intro">Pick the line that matches what you want. Each lists at most three things, in order.</p>
+  <div class="paths">
+    <div class="path-card">
+      <h3>I want to understand the model</h3>
+      <ol>
+        <li><a href="https://github.com/hbprosper/dihiggs/blob/main/docs/dihiggs_model.pdf">docs/dihiggs_model.pdf</a>: the model step by step, from the Feynman diagrams to the systematic uncertainty (section 6).</li>
+        <li><a href="https://github.com/hbprosper/dihiggs/blob/main/docs/paper/executive_summary.pdf">docs/paper/executive_summary.pdf</a>: two pages, with the main numbers.</li>
+        <li><a href="https://github.com/hbprosper/dihiggs/blob/main/docs/paper/appendix_draft.pdf">docs/paper/appendix_draft.pdf</a>: the draft paper appendix.</li>
+      </ol>
+    </div>
+    <div class="path-card">
+      <h3>I want to use the model</h3>
+      <p>The primary model needs only NumPy and SciPy. Run from the repository root:</p>
+<pre>from dihiggs.smooth import SmoothHEFT
+model = SmoothHEFT.load(
+  'code/runs/SMOOTH_J40/smooth_model.npz')
+theta = [1, 1, 0, 0, 0]          <span class="c"># the SM</span>
+sigma, sd = model.spectrum(theta)
+<span class="c"># pb per 15 GeV bin, 255-1455 GeV; sd includes
+# the fit and model-error uncertainties</span></pre>
+      <p>Use it on 250&ndash;1455 GeV only. For bins wider than 15 GeV, sum the 15 GeV bins (<a href="https://github.com/hbprosper/dihiggs/blob/main/docs/dihiggs_model.pdf">dihiggs_model.pdf</a>, section 8).</p>
+    </div>
+    <div class="path-card">
+      <h3>I want to rerun or extend it</h3>
+      <ol>
+        <li>Read <a href="#pipeline">the pipeline</a> below: which notebook to run, in which order, and what each writes.</li>
+        <li>Notebooks are in <span class="path">code/</span> and are run from there; each one explains its switches in a table near the top.</li>
+        <li>For the GPU cluster, see <a href="https://github.com/hbprosper/dihiggs/blob/main/docs/remote_gpu.pdf">docs/remote_gpu.pdf</a>.</li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<!-- ===================================================================== -->
+<section id="status">
+  <h2>Where things stand</h2>
+  <p class="intro">Several models were built over the project. Two matter now. The rest are kept because the notes refer to them.</p>
+  <div class="tbl">
+  <table>
+    <thead><tr><th>Model</th><th>Status</th><th>What it is</th><th>Written up in</th></tr></thead>
+    <tbody>
+      <tr><td>Smooth 23&times;80 model</td><td><span class="chip ok">primary</span></td><td>Each a<sub>i</sub>(m) is a cubic spline (40 basis functions) times the threshold factor, fitted to bin integrals. Linear in its parameters, so the posterior is exactly Gaussian. <span class="path">dihiggs/smooth.py</span></td><td><a href="https://github.com/hbprosper/dihiggs/blob/main/docs/smooth/smooth_results.pdf">smooth_results.pdf</a></td></tr>
+      <tr><td>Density network</td><td><span class="chip check">cross-check</span></td><td>A neural network for the a<sub>i</sub>(m) as densities, compared with POWHEG through bin integrals, with a weak smoothness penalty. <span class="path">HEFTDensity</span> in <span class="path">dihiggs/heftnet.py</span></td><td><a href="https://github.com/hbprosper/dihiggs/blob/main/docs/density/density_results.pdf">density_results.pdf</a></td></tr>
+      <tr><td>Bin-value networks and ensembles</td><td><span class="chip old">history</span></td><td>The original <span class="path">HEFTNet</span>, which models bin contents at bin centres; seeds and bootstrap ensembles; Huber fine-tune.</td><td><a href="https://github.com/hbprosper/dihiggs/blob/main/docs/report/dihiggs_report.pdf">dihiggs_report.pdf</a></td></tr>
+      <tr><td>Bayesian network, Laplace mixture</td><td><span class="chip old">history</span></td><td>HMC over the network parameters; a mixture of linearised Laplace approximations. Showed that parameter uncertainty is small and model error dominates.</td><td><a href="https://github.com/hbprosper/dihiggs/blob/main/docs/bnn/laplace_explained.pdf">laplace_explained.pdf</a></td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3 style="margin-top:22px">How good are they?</h3>
+  <p class="intro" style="margin-bottom:12px">Mean likelihood-ratio statistic &minus;2&nbsp;ln&nbsp;&lambda; per bin on the 1,000 test spectra, with the exact Poisson counts. A perfect model gives 1. The common excess near threshold is the systematic described in <a href="https://github.com/hbprosper/dihiggs/blob/main/docs/dihiggs_model.pdf">dihiggs_model.pdf</a>, section 6.</p>
+  <div class="tbl">
+  <table>
+    <thead><tr><th>Model</th><th class="num">255&ndash;555 GeV</th><th class="num">&gt; 555 GeV</th><th class="num">median per spectrum</th></tr></thead>
+    <tbody>
+      <tr class="hl"><td>Smooth model</td><td class="num">1.566</td><td class="num">1.100</td><td class="num">1.078</td></tr>
+      <tr><td>Free fit, 23 numbers per bin (the best any 23-term model can do)</td><td class="num">1.559</td><td class="num">1.105</td><td class="num">1.075</td></tr>
+      <tr><td>Density network (Huber &delta; = 2, smoothness &lambda; = 10<sup>&minus;6</sup>)</td><td class="num">1.604</td><td class="num">1.102</td><td class="num">1.073</td></tr>
+      <tr><td>Old bin-value network ensemble (20 networks)</td><td class="num">1.561</td><td class="num">1.121</td><td class="num">1.085</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<!-- ===================================================================== -->
+<section id="pipeline">
+  <h2>The pipeline</h2>
+  <p class="intro">Run the notebooks from <span class="path">code/</span>, in this order. Each writes its results into a run folder under <span class="path">code/runs/</span>.</p>
+  <ol class="pipe">
+    <li><span class="n">1</span><div>
+      <h3><a href="https://github.com/hbprosper/dihiggs/blob/main/code/heft_prepare_data.ipynb">heft_prepare_data.ipynb</a></h3>
+      <p>Splits the POWHEG spectra into 1,000 test spectra and the training rows (one row per bin).</p>
+      <p class="out">Writes <span class="path">data/heft_wide_gauss_testdata_13TeV.csv</span> and <span class="path">data/heft_wide_gauss_traindata_13TeV.csv.gz</span>. Both are already in the repository, so you only need this step to change the split.</p>
+    </div></li>
+    <li><span class="n">2</span><div>
+      <h3>Fit a model</h3>
+      <div class="branch">
+        <div>
+          <p><span class="chip ok">primary</span> <a href="https://github.com/hbprosper/dihiggs/blob/main/code/heft_smooth.ipynb">heft_smooth.ipynb</a></p>
+          <p>Fits the smooth model and its model-error coefficient &epsilon;(m). About 75 s on a laptop CPU.</p>
+          <p class="out">Writes <span class="path">runs/SMOOTH_J40/</span>.</p>
+        </div>
+        <div>
+          <p><span class="chip check">cross-check</span> <a href="https://github.com/hbprosper/dihiggs/blob/main/code/heft_train.ipynb">heft_train.ipynb</a>, then <a href="https://github.com/hbprosper/dihiggs/blob/main/code/heft_finetune.ipynb">heft_finetune.ipynb</a></p>
+          <p>Trains the density network with an L1 loss (<code>MODEL = 'density'</code>; use a GPU), then fine-tunes it (<code>DELTAS = [2]</code>, <code>CURV_LAMBDAS = [1e-6]</code>; about a minute on a GPU).</p>
+          <p class="out">Writes <span class="path">runs/DENS_L1_SiLU_thr/</span>, then <span class="path">runs/FTD_SiLU_huber_d2_pearson_curv1e-06/</span>.</p>
+        </div>
+      </div>
+    </div></li>
+    <li><span class="n">3</span><div>
+      <h3><a href="https://github.com/hbprosper/dihiggs/blob/main/code/heft_density_eval.ipynb">heft_density_eval.ipynb</a></h3>
+      <p>Evaluates the density networks exactly as the smooth model was evaluated: &minus;2&nbsp;ln&nbsp;&lambda;, calibrated pulls, comparison of the densities. About 5 minutes on a laptop.</p>
+      <p class="out">Prints the tables and writes the figures in <span class="path">docs/density/</span>.</p>
+    </div></li>
+    <li><span class="n">4</span><div>
+      <h3>Paper figures: <span class="path">docs/paper/fig_*.py</span></h3>
+      <p>Each script makes one figure. Run them from <span class="path">docs/paper/</span>; they share <a href="https://github.com/hbprosper/dihiggs/blob/main/docs/paper/smooth_common.py">smooth_common.py</a>, which reads the smooth model and the test spectra from the repository.</p>
+    </div></li>
+  </ol>
+</section>
+
+<!-- ===================================================================== -->
+<section id="code">
+  <h2>Code</h2>
+  <p class="intro">The Python package <span class="path">dihiggs/</span> holds the reusable code; the notebooks in <span class="path">code/</span> use it. Install it with <code>pip install -e .</code> from the repository root.</p>
+
+  <h3>The package</h3>
+  <div class="tbl" style="margin-bottom:22px">
+  <table>
+    <thead><tr><th>Module</th><th>Status</th><th>What it provides</th></tr></thead>
+    <tbody>
+      <tr><td><a class="path" href="https://github.com/hbprosper/dihiggs/blob/main/dihiggs/smooth.py">smooth.py</a></td><td><span class="chip ok">primary</span></td><td><code>SplineBasis</code>, <code>SmoothHEFT</code> (fit, load, spectrum, dsigma_dm, epsilon), <code>heft_monomials</code></td></tr>
+      <tr><td><a class="path" href="https://github.com/hbprosper/dihiggs/blob/main/dihiggs/heftnet.py">heftnet.py</a></td><td><span class="chip check">cross-check</span></td><td><code>HEFTDensity</code> (the density network, with <code>curvature_penalty</code>), the original <code>HEFTNet</code>, <code>monomials</code></td></tr>
+      <tr><td><a class="path" href="https://github.com/hbprosper/dihiggs/blob/main/dihiggs/quadrature.py">quadrature.py</a></td><td><span class="chip check">cross-check</span></td><td>Gauss&ndash;Legendre nodes and weights in PyTorch, for the bin integrals of <code>HEFTDensity</code></td></tr>
+      <tr><td><a class="path" href="https://github.com/hbprosper/dihiggs/blob/main/dihiggs/finetune.py">finetune.py</a></td><td><span class="chip check">cross-check</span></td><td>The Huber-pull fine-tune (Adam or L-BFGS), with the optional smoothness penalty</td></tr>
+      <tr><td><a class="path" href="https://github.com/hbprosper/dihiggs/blob/main/dihiggs/counts.py">counts.py</a></td><td><span class="chip ok">primary</span></td><td>Recovers the exact event counts of every POWHEG spectrum (each bin is a whole number of events)</td></tr>
+      <tr><td><a class="path" href="https://github.com/hbprosper/dihiggs/blob/main/dihiggs/laplace.py">laplace.py</a>, <a class="path" href="https://github.com/hbprosper/dihiggs/blob/main/dihiggs/hmc.py">hmc.py</a>, <a class="path" href="https://github.com/hbprosper/dihiggs/blob/main/dihiggs/ensemble.py">ensemble.py</a></td><td><span class="chip old">history</span></td><td>Laplace mixture, Hamiltonian Monte Carlo, ensembles of networks</td></tr>
+      <tr><td><a class="path" href="https://github.com/hbprosper/dihiggs/blob/main/dihiggs/convert.py">convert.py</a></td><td><span class="chip old">history</span></td><td>Exports a trained <code>HEFTNet</code> to plain NumPy and header-only C++</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3>Notebooks and scripts in <span class="path">code/</span></h3>
+  <div class="tbl">
+  <table>
+    <thead><tr><th>File</th><th>Status</th><th>What it does</th></tr></thead>
+    <tbody>
+      <tr><td class="path">heft_prepare_data.ipynb</td><td><span class="chip ok">current</span></td><td>Makes the training and test files (pipeline step 1)</td></tr>
+      <tr><td class="path">heft_smooth.ipynb</td><td><span class="chip ok">primary</span></td><td>Fits the smooth model (step 2)</td></tr>
+      <tr><td class="path">heft_train.ipynb</td><td><span class="chip check">cross-check</span></td><td>L1 training of a network; <code>MODEL</code> chooses the density network or the original <code>HEFTNet</code></td></tr>
+      <tr><td class="path">heft_finetune.ipynb</td><td><span class="chip check">cross-check</span></td><td>Huber-pull fine-tune, with the smoothness penalty (<code>CURV_LAMBDAS</code>)</td></tr>
+      <tr><td class="path">heft_density_eval.ipynb</td><td><span class="chip check">cross-check</span></td><td>Evaluates the density networks against the smooth model (step 3)</td></tr>
+      <tr><td class="path">smooth_toy.py, density_toy.py</td><td><span class="chip ok">tests</span></td><td>Tests with known answers for the smooth model and the density network (a few minutes on a CPU)</td></tr>
+      <tr><td class="path">density_ablation.py</td><td><span class="chip ok">tests</span></td><td>Which ingredient of the density network matters, on a realistic toy (about an hour on a CPU)</td></tr>
+      <tr><td class="path">heft_test.ipynb, heft_checks.ipynb, heft_export.ipynb</td><td><span class="chip old">history</span></td><td>Test, checks and export of the original <code>HEFTNet</code></td></tr>
+      <tr><td class="path">heft_train_ensemble.ipynb, heft_train_bnn.ipynb, hmc_toy.ipynb, heft_laplace.ipynb, laplace_toy.py, heft_train_curriculum.ipynb</td><td><span class="chip old">history</span></td><td>Ensembles, the Bayesian network and its toy, the Laplace mixture, curriculum training</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<!-- ===================================================================== -->
+<section id="data">
+  <h2>Data</h2>
+  <p class="intro">Every spectrum is a histogram of 40,000 equal-weight POWHEG events at 13 TeV, in 15 GeV bins of m<sub>hh</sub>. <a href="https://github.com/hbprosper/dihiggs/blob/main/data/README.md">data/README.md</a> describes the columns and lists ten incomplete runs.</p>
+  <div class="tbl">
+  <table>
+    <thead><tr><th>File</th><th>Contents</th></tr></thead>
+    <tbody>
+      <tr><td class="path">data/powheg_total_gauss_params_13TeV.csv.gz</td><td>The 4,999 POWHEG spectra (the source data), 100 bins from 0 GeV</td></tr>
+      <tr><td class="path">data/powheg_total_gauss_params_13TeV_cleaned.csv.gz</td><td>The same without the ten incomplete runs</td></tr>
+      <tr><td class="path">data/heft_wide_gauss_testdata_13TeV.csv</td><td>The 1,000 test spectra, 80 bins from 255 GeV</td></tr>
+      <tr><td class="path">data/heft_wide_gauss_traindata_13TeV.csv.gz</td><td>The training rows: one row per bin of the other spectra</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<!-- ===================================================================== -->
+<section id="documents">
+  <h2>Documents</h2>
+  <p class="intro">All the notes are LaTeX PDFs in <span class="path">docs/</span>, each beside its source. Plans come before the work they describe; results notes after it. Type to filter by name or topic.</p>
+  <div class="filter">
+    <label for="docfilter" class="count">Filter</label>
+    <input id="docfilter" type="search" placeholder="e.g. model error, Laplace, threshold" autocomplete="off">
+    <span class="count" id="doccount" aria-live="polite"></span>
+  </div>
+  <div id="doclist"></div>
+  <p class="none" id="docnone" hidden>No document matches. Try a shorter word.</p>
+</section>
+
+<!-- ===================================================================== -->
+<section id="runs">
+  <h2>Run folders</h2>
+  <p class="intro">Every fit or training run writes a folder under <span class="path">code/runs/</span>, holding its configuration (<span class="path">dihiggs_config.yaml</span>), parameters and loss history. The folder name records the settings.</p>
+  <div class="tbl">
+  <table>
+    <thead><tr><th>Folder</th><th>In git?</th><th>What it holds</th></tr></thead>
+    <tbody>
+      <tr><td class="path">SMOOTH_J40</td><td>yes</td><td>The smooth model: 40 splines per function (<span class="path">smooth_model.npz</span>)</td></tr>
+      <tr><td class="path">DENS_L1_SiLU_thr</td><td>not yet</td><td>Density network after L1 training: SiLU activation, threshold factor</td></tr>
+      <tr><td class="path">FTD_SiLU_huber_d2_pearson_curv1e-06</td><td>not yet</td><td>The featured density network: fine-tuned with Huber &delta; = 2, Poisson variances from the model, smoothness &lambda; = 10<sup>&minus;6</sup></td></tr>
+      <tr><td class="path">L1Loss, FT_huber_d*, ENS_*, LAPLACE_*, BNN_poisson_full</td><td>yes</td><td>The original networks, their ensembles, the Laplace mixture and the Bayesian network</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<!-- ===================================================================== -->
+<section id="terms">
+  <h2>Terms used in the notes</h2>
+  <dl class="gloss">
+    <dt>Bin integral</dt><dd>The cross section in a bin, &int; d&sigma;/dm dm over the bin. POWHEG gives bin integrals, so both current models are compared with POWHEG through them, never through the value at the bin centre.</dd>
+    <dt>Threshold factor &phi;(m)</dt><dd>&radic;(1 &minus; 4m<sub>h</sub><sup>2</sup>/m<sup>2</sup>), the Higgs velocity in the hh rest frame. It makes the density vanish at m<sub>hh</sub> = 250 GeV, as two-body phase space does.</dd>
+    <dt>&minus;2 ln &lambda;</dt><dd>The likelihood-ratio statistic for a count n and a prediction &mu;: &minus;2 ln[Poisson(n; &mu;)/Poisson(n; n)]. Its mean is 1 for a correct model. The notes use it instead of a &chi;<sup>2</sup> that divides by the observed count, which favours predictions biased low.</dd>
+    <dt>Free fit</dt><dd>23 independent numbers per bin, fitted to the training rows. The best that any model of the 23-term form can do, so it serves as the benchmark.</dd>
+    <dt>Model-error term</dt><dd>The systematic uncertainty, &epsilon;(m) &Sigma;<sub>i</sub> |C<sub>i</sub> A<sub>i</sub>|. It covers POWHEG's small departures from the 23-term form, which are largest where the terms cancel. &epsilon; is 0.08% at threshold and 0.28% at 600 GeV.</dd>
+    <dt>Cancellation ratio</dt><dd>A spectrum's total cross section divided by the sum of the magnitudes of its 23 terms. It is near 1 when the terms add and small when they cancel.</dd>
+    <dt>Test spectra, quick-test rows</dt><dd>The 1,000 test spectra are never used in fitting; all the headline numbers come from them. The quick-test rows are bins of the other spectra that are also never fitted; they set &epsilon;(m).</dd>
+    <dt>Pull</dt><dd>(POWHEG &minus; prediction) divided by the total uncertainty. Its standard deviation should be 1 if the uncertainties are right.</dd>
+  </dl>
+</section>
+
+<footer>
+  Last updated 5 November 2026, after commit <span class="path">0d5ef50</span>. The repository is public; this page links to the files on GitHub.
+</footer>
+</main>
+</div>
+
+<script>
+(function () {
+  var BASE = 'https://github.com/hbprosper/dihiggs/blob/main/';
+  // [path, description, status, keywords]; status: ok | check | old | plan
+  var GROUPS = [
+    ['The model and the paper', [
+      ['docs/dihiggs_model.pdf', 'The model step by step: physics, data, the smooth model, the fit, and the systematic uncertainty (model-error term).', 'ok', 'start overview systematic'],
+      ['docs/paper/executive_summary.pdf', 'Two-page summary with the main numbers and a map of the notes.', 'ok', 'summary'],
+      ['docs/paper/appendix_draft.pdf', 'Draft paper appendix: the model of the spectrum and its uncertainty.', 'ok', 'paper'],
+      ['docs/paper/all_test_spectra.pdf', 'All 1,000 test spectra against the smooth model (50 pages).', 'ok', 'figures spectra'],
+      ['docs/theory.pdf', 'LHC Higgs Working Group note (arXiv:2304.01968): the 23-term form of the HEFT cross section.', 'ok', 'theory monomials reference']
+    ]],
+    ['The smooth model (primary)', [
+      ['docs/smooth/smooth_plan.pdf', 'Plan: splines times the threshold factor, fitted to bin integrals, smoothness set by the evidence.', 'plan', 'spline evidence'],
+      ['docs/smooth/smooth_results.pdf', 'Results: accuracy, calibration, the merged-bin test, the edge bins, sensitivity.', 'ok', 'spline merged-bin'],
+      ['docs/smooth/literature_review.pdf', 'What exists in the literature, and what is new here.', 'ok', 'literature references']
+    ]],
+    ['The systematic uncertainty', [
+      ['docs/modelerror/model_error_note.pdf', 'Why no 23-term model gets below a floor, and why the excess grows with cancellation.', 'ok', 'model error floor cancellation'],
+      ['docs/modelerror/new_error_model.pdf', 'The cancellation-aware model-error term and its calibration.', 'ok', 'model error epsilon'],
+      ['docs/counts/counts_note.pdf', 'Every spectrum is exact Poisson counts; recovering them, and why fits must use the model variance.', 'ok', 'counts poisson neyman']
+    ]],
+    ['The density network (cross-check)', [
+      ['docs/density/density_plan.pdf', 'Plan, with an addendum: bin integrals by Gauss-Legendre quadrature, activations, the toy and factorial tests.', 'plan', 'quadrature gauss-legendre toy ablation threshold'],
+      ['docs/density/density_eval_plan.pdf', 'Plan for evaluating the density network as the smooth model was evaluated.', 'plan', 'evaluation'],
+      ['docs/density/density_results.pdf', 'Results, including the smoothness penalty.', 'check', 'smoothness curvature penalty results']
+    ]],
+    ['Earlier networks (history)', [
+      ['docs/report/dihiggs_report.pdf', 'Report on the original network: checks, POWHEG noise, curriculum training.', 'old', 'heftnet noise curriculum'],
+      ['docs/checks_plan.pdf', 'Plan for the checks of the original network.', 'old', 'checks'],
+      ['docs/curriculum_plan_v2.pdf', 'Plan for curriculum training.', 'old', 'curriculum'],
+      ['docs/huber/huber_plan.pdf', 'Plan for the Huber-pull fine-tune.', 'old', 'huber fine-tune'],
+      ['docs/ensemble/ensemble_plan.pdf', 'Plan for seeds and bootstrap ensembles.', 'old', 'ensemble bootstrap'],
+      ['docs/bnn/bnn_plan.pdf', 'Plan for the Bayesian network with Hamiltonian Monte Carlo.', 'old', 'bnn hmc bayesian'],
+      ['docs/bnn/bnn_run1.pdf', 'Bayesian network, runs 1 to 3 (also bnn_run2.pdf, bnn_run3.pdf).', 'old', 'bnn hmc results'],
+      ['docs/bnn/bnn_plan2.pdf', 'Why the Bayesian bands were narrow, and the Laplace mixture.', 'old', 'bnn laplace diagnosis'],
+      ['docs/bnn/laplace_explained.pdf', 'The Laplace mixture explained for colleagues.', 'old', 'laplace']
+    ]],
+    ['Working on the GPU cluster', [
+      ['docs/remote_gpu.pdf', 'SSH tunnels, JupyterLab and TensorBoard on the remote GPU machine.', 'ok', 'gpu cluster ssh jupyter tensorboard']
+    ]]
+  ];
+  var LABEL = { ok: 'current', check: 'cross-check', old: 'history', plan: 'plan' };
+  var list = document.getElementById('doclist');
+  var html = '';
+  GROUPS.forEach(function (g, gi) {
+    html += '<div class="group" data-group="' + gi + '"><h3>' + g[0] + '</h3><ul class="docs">';
+    g[1].forEach(function (d) {
+      var name = d[0], link = BASE + d[0];
+      var text = (d[0] + ' ' + d[1] + ' ' + d[3] + ' ' + g[0]).toLowerCase();
+      html += '<li data-text="' + text.replace(/"/g, '') + '"><span class="path"><a href="' + link + '">' + name + '</a></span><p>' + d[1] + '</p><span class="chip ' + d[2] + '">' + LABEL[d[2]] + '</span></li>';
+    });
+    html += '</ul></div>';
+  });
+  list.innerHTML = html;
+  var input = document.getElementById('docfilter');
+  var count = document.getElementById('doccount');
+  var none = document.getElementById('docnone');
+  function apply() {
+    var q = input.value.trim().toLowerCase();
+    var shown = 0, total = 0;
+    list.querySelectorAll('.group').forEach(function (g) {
+      var any = 0;
+      g.querySelectorAll('li').forEach(function (li) {
+        total++;
+        var ok = !q || li.getAttribute('data-text').indexOf(q) >= 0;
+        li.hidden = !ok; if (ok) { any++; shown++; }
+      });
+      g.hidden = any === 0;
+    });
+    count.textContent = q ? shown + ' of ' + total + ' documents' : total + ' documents';
+    none.hidden = shown !== 0;
+  }
+  input.addEventListener('input', apply);
+  apply();
+})();
+</script>
+</body></html>

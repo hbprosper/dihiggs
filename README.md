@@ -1,6 +1,8 @@
 # dihiggs
 Modeling the di-Higgs cross section as a function of the parameters of the Higgs effective field theory (HEFT).
 
+**New here?** Open [`guide.html`](guide.html) in a browser (download it, or clone the repository): a one-page guide to what to read first, which notebooks to run in which order, and where everything lives.
+
 
 ## Dependencies
 The notebooks, and `dihiggs` module, in this repository depend on one or more well-known
