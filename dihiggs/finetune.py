@@ -12,6 +12,10 @@
 #   finetune        stage 2 of the training: full-batch Adam, starting from
 #                   a trained model, keeping the parameters with the best
 #                   validation loss.
+#   finetune_lbfgs  the same with L-BFGS in double precision, for the density
+#                   model HEFTDensity (docs/density/density_plan.pdf), whose
+#                   full-batch evaluation is cheap; it converges far faster
+#                   than Adam (code/density_toy.py).
 #
 # The noise variances are NOT a second target column: they are a separate
 # tensor, aligned row by row with the inputs and targets, and the rows of a
@@ -26,7 +30,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-__all__ = ['estimate_n_eff', 'noise_variance', 'HuberPull', 'finetune']
+__all__ = ['estimate_n_eff', 'noise_variance', 'HuberPull', 'finetune', 'finetune_lbfgs']
 
 # ----------------------------------------------------------------------------
 # A note on three PyTorch idioms used below
@@ -260,5 +264,110 @@ def finetune(model, X, T, V, U, Xv, Tv, Vv, Uv, loss_fn,
         device = next(model.parameters()).device
         model.load(paramsfile)      # drwho's Model.load: onto the CPU
         model.to(device)
+    model.eval()
+    return {k: np.array(v) for k, v in history.items()}
+
+
+# ============================================================================
+# 4. The fine-tune with L-BFGS
+# ============================================================================
+def finetune_lbfgs(model, X, T, V, U, Xv, Tv, Vv, Uv, loss_fn,
+                   blocks=30, iters_per_block=50, history_size=50,
+                   variance_from='model', tol=1e-7,
+                   paramsfile=None, lossfile=None, verbose=True):
+    '''
+    Stage 2 of the training with L-BFGS, a quasi-Newton method: from the
+    gradients of the last history_size steps it builds an approximation to
+    the inverse of the Hessian (the matrix of second derivatives of the loss)
+    and steps in the direction it implies, with a line search for the step
+    length. For a smooth loss of a few thousand parameters, evaluated on all
+    rows at once, it needs far fewer steps than Adam.
+
+    Intended for HEFTDensity: its forward pass evaluates the network only at
+    the fixed quadrature nodes, so a full-batch evaluation over all training
+    rows is cheap. Everything is done in double precision, because the line
+    search needs accurate losses and gradients (in single precision L-BFGS
+    stalls); at the end the model is returned in single precision.
+
+    The work is done in blocks of iters_per_block L-BFGS iterations. With
+    variance_from='model' the noise variances are recomputed from the model's
+    prediction at the start of each block and held fixed within it
+    (iteratively reweighted least squares: at convergence, the Poisson fit,
+    without the downward bias of weighting by the observed counts). After
+    each block the validation loss is computed and the best parameters kept.
+    Stops when the training loss changes by less than tol (relative).
+
+    Arguments as for finetune; blocks, iters_per_block and history_size
+    control L-BFGS. Returns a dictionary of numpy arrays: step (block),
+    train, val, best.
+    '''
+    assert variance_from in ('data', 'model'), variance_from
+    model.double()
+    X, T, V, U = (a.double() for a in (X, T, V, U))
+    Xv, Tv, Vv, Uv = (a.double() for a in (Xv, Tv, Vv, Uv))
+    optimizer = torch.optim.LBFGS(model.parameters(), lr=1, max_iter=iters_per_block,
+                                  history_size=history_size,
+                                  line_search_fn='strong_wolfe')
+
+    def loss_on(Xa, Ta, Va, Ua, var=None):
+        f = model(Xa).view(-1)
+        v = _variance(f, Va, Ua, variance_from) if var is None else var
+        return loss_fn(f, Ta, v)
+
+    def validation_loss():
+        model.eval()
+        with torch.no_grad():
+            return float(loss_on(Xv, Tv, Vv, Uv))
+
+    history = {'step': [], 'train': [], 'val': [], 'best': []}
+    if lossfile is not None:
+        open(lossfile, 'w').write('step,train,val,best,lr\n')
+    best = validation_loss()
+    if paramsfile is not None:
+        model.save(paramsfile)
+    previous = math.inf
+    t0 = time.time()
+    for block in range(1, blocks + 1):
+        model.train()
+        # the variances for this block, from the current model (or the data)
+        with torch.no_grad():
+            var = _variance(model(X).view(-1), V, U, variance_from)
+
+        def closure():
+            # L-BFGS calls this (possibly several times per iteration, in
+            # the line search) to get the loss and its gradient
+            optimizer.zero_grad()
+            loss = loss_on(X, T, V, U, var)
+            loss.backward()
+            return loss
+
+        optimizer.step(closure)
+        with torch.no_grad():
+            train = float(loss_on(X, T, V, U))
+        if not math.isfinite(train):
+            print(f'block {block}: the training loss is not finite; stopping')
+            break
+        val = validation_loss()
+        if val < best:
+            best = val
+            if paramsfile is not None:
+                model.save(paramsfile)
+        for key, value in zip(['step', 'train', 'val', 'best'], [block, train, val, best]):
+            history[key].append(value)
+        if lossfile is not None:
+            open(lossfile, 'a').write(f'{block},{train:.10g},{val:.10g},{best:.10g},1\n')
+        if verbose:
+            print(f'block {block:3d}/{blocks}  train {train:.7g}  val {val:.7g}  best {best:.7g}  '
+                  f'({(time.time() - t0) / 60:.1f} min)', flush=True)
+        if abs(previous - train) < tol * abs(train):
+            break
+        previous = train
+
+    # reload the parameters with the lowest validation loss
+    if paramsfile is not None:
+        device = next(model.parameters()).device
+        model.load(paramsfile)
+        model.to(device)
+    model.float()
     model.eval()
     return {k: np.array(v) for k, v in history.items()}
