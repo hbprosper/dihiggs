@@ -234,10 +234,13 @@ class HEFTDensity(HEFTNet):
 
     # ---- the prediction for training rows -----------------------------------
     def forward(self, x):
-        # x.shape: [N, 6]; x[:, 0] = (m - 255 GeV)/1500 GeV at a bin centre,
-        # i.e. (k + 0.5)/100 for bin k; round(100 x - 0.5) recovers k, and
-        # clamp keeps it in range for points that are not bin centres
-        k = torch.round(x[:, 0] * 100 - 0.5).long().clamp(0, self.n_bins - 1)
+        # x.shape: [N, 6]; x[:, 0] = (m - 255 GeV)/1500 GeV at the centre of a
+        # bin. The bin index k is found from the bin edges: bucketize returns,
+        # for each m, the number of interior edges at or below it, which is the
+        # index of the bin that contains m (points outside the range go to the
+        # first or last bin). This works for any binning, e.g. 30 GeV bins.
+        m = M_LO + M_SCALE * x[:, 0]
+        k = torch.bucketize(m, self.edges[1:-1].to(m.dtype), right=True)
         A = self.bin_integrals()                          # [n_bins, 23]
         C = self.monomial_fn(x[:, 1:])                    # [N, 23]
         return (C * A[k]).sum(dim=1)                      # A[k]: row k of A for each input row

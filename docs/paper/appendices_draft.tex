@@ -1,0 +1,33 @@
+% Stand-alone wrapper for reading the two appendices of the paper.
+% In the paper (JHEP template on Overleaf):
+%     \appendix
+%     \input{appendix_A_smooth}
+%     \input{appendix_B_density}
+\clearpage
+% copy the figures fig_basis.pdf, fig_spectra_dz.pdf, fig_A_*.pdf, fig_B_*.pdf,
+% and add appendices_refs.bib to the bibliography. The appendices use only
+% amsmath, graphicx and booktabs.
+\documentclass[a4paper,11pt]{article}
+\IfFileExists{jheppub.sty}{\usepackage{jheppub}\def\HAVEJHEP{}}{\usepackage[margin=1in]{geometry}\usepackage{hyperref}}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\ifdefined\HAVEJHEP\else\usepackage[numbers,sort&compress]{natbib}\fi
+
+\title{Appendices A and B: the models of the di-Higgs $m_{hh}$ spectrum}
+\author{P.~Bhat, N.~De~Filippis, K.F.~Johnson, H.B.~Prosper, R.~Starnes}
+\ifdefined\HAVEJHEP
+  \affiliation{Fermilab; Politecnico di Bari; Florida State University}
+  \abstract{Draft of the appendices for the paper, \today.}
+\fi
+
+\begin{document}
+\maketitle
+\ifdefined\HAVEJHEP\else\begin{center}\small Draft of the appendices for the paper, \today.\end{center}\fi
+\appendix
+\input{appendix_A_smooth}
+\input{appendix_B_density}
+\clearpage
+\ifdefined\HAVEJHEP\bibliographystyle{JHEP}\else\bibliographystyle{unsrtnat}\fi
+\bibliography{appendices_refs}
+\end{document}

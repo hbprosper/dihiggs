@@ -370,8 +370,8 @@ sigma, sd = model.spectrum(theta)
     <thead><tr><th>Folder</th><th>In git?</th><th>What it holds</th></tr></thead>
     <tbody>
       <tr><td class="path">SMOOTH_J40</td><td>yes</td><td>The smooth model: 40 splines per function (<span class="path">smooth_model.npz</span>)</td></tr>
-      <tr><td class="path">DENS_L1_SiLU_thr</td><td>not yet</td><td>Density network after L1 training: SiLU activation, threshold factor</td></tr>
-      <tr><td class="path">FTD_SiLU_huber_d2_pearson_curv1e-06</td><td>not yet</td><td>The featured density network: fine-tuned with Huber &delta; = 2, Poisson variances from the model, smoothness &lambda; = 10<sup>&minus;6</sup></td></tr>
+      <tr><td class="path">DENS_L1_SiLU_thr</td><td>yes</td><td>Density network after L1 training: SiLU activation, threshold factor</td></tr>
+      <tr><td class="path">FTD_SiLU_huber_d2_pearson_curv1e-06</td><td>yes</td><td>The featured density network: fine-tuned with Huber &delta; = 2, Poisson variances from the model, smoothness &lambda; = 10<sup>&minus;6</sup></td></tr>
       <tr><td class="path">L1Loss, FT_huber_d*, ENS_*, LAPLACE_*, BNN_poisson_full</td><td>yes</td><td>The original networks, their ensembles, the Laplace mixture and the Bayesian network</td></tr>
     </tbody>
   </table>

@@ -1,0 +1,207 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{mathpazo}
+\usepackage{amsmath,amssymb}
+\usepackage{microtype}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage[dvipsnames]{xcolor}
+\usepackage{tikz}
+\usetikzlibrary{positioning,arrows.meta,calc,fit,backgrounds,decorations.pathreplacing}
+\usepackage[most]{tcolorbox}
+\usepackage{enumitem}
+\usepackage{listings}
+\usepackage[font=small,labelfont=bf]{caption}
+\usepackage{hyperref}
+\hypersetup{colorlinks=true,linkcolor=MidnightBlue,citecolor=MidnightBlue,urlcolor=MidnightBlue}
+\usepackage{cleveref}
+\urlstyle{tt}
+\def\UrlBreaks{\do\_\do/\do.}
+\newcommand{\file}[1]{\nolinkurl{#1}}
+\newcommand{\code}[1]{\texttt{#1}}
+\newcommand{\mhh}{m_{hh}}
+\newcommand{\bC}{\boldsymbol{C}}
+\newcommand{\snoise}{s_{\text{noise}}}
+
+\definecolor{trainable}{HTML}{1B6CA8}
+\definecolor{physics}{HTML}{2E933C}
+\definecolor{datac}{HTML}{7B4EA3}
+\definecolor{warn}{HTML}{C0392B}
+
+\newtcolorbox{keyidea}[1][]{enhanced,breakable,colback=physics!6,colframe=physics!70!black,
+  fonttitle=\bfseries,title={#1},boxrule=0.6pt,arc=2pt,left=6pt,right=6pt}
+\newtcolorbox{aside}[1][]{enhanced,breakable,colback=trainable!5,colframe=trainable!70!black,
+  fonttitle=\bfseries,title={#1},boxrule=0.6pt,arc=2pt,left=6pt,right=6pt}
+\newtcolorbox{assume}[1][]{enhanced,breakable,colback=datac!5,colframe=datac!70!black,
+  fonttitle=\bfseries,title={#1},boxrule=0.6pt,arc=2pt,left=6pt,right=6pt}
+\newtcolorbox{watch}[1][]{enhanced,breakable,colback=warn!5,colframe=warn!70!black,
+  fonttitle=\bfseries,title={#1},boxrule=0.6pt,arc=2pt,left=6pt,right=6pt}
+\setlist{itemsep=2pt,topsep=3pt}
+\setlength{\emergencystretch}{3em}
+
+\lstset{language=Python, basicstyle=\ttfamily\small, columns=fullflexible,
+  keepspaces=true, commentstyle=\color{physics!70!black}\itshape,
+  keywordstyle=\color{trainable!90!black}\bfseries, stringstyle=\color{datac},
+  showstringspaces=false, frame=single, rulecolor=\color{gray!40},
+  backgroundcolor=\color{gray!3}, xleftmargin=4pt, xrightmargin=4pt,
+  aboveskip=6pt, belowskip=6pt}
+
+\title{\textbf{The paper appendices}\\[4pt]
+\large Plan: Appendix A, the smooth model; Appendix B, the neural-network density model}
+\author{P.~Bhat (Fermilab), N.~De~Filippis (Politecnico di Bari),\\
+K.F.~Johnson, H.B.~Prosper, R.~Starnes (Florida State University)}
+\date{6 November 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+\noindent
+The current draft appendix (\file{docs/paper/appendix_uncertainty.tex}, v4) describes the smooth model
+but still carries the old networks, ensembles and the Bayesian network as cross-checks, uses the word
+``discrepancy'', and has figures with the old networks in them. We propose two self-contained
+appendices for the paper, describing only the two models to be published: \textbf{Appendix A}, the
+smooth spline model, which is the model of the paper; and \textbf{Appendix B}, the neural-network
+density model, as an independent model of the same quantity. Everything else (the bin-value networks,
+ensembles, the Bayesian network, the Laplace mixture) is left out. The plan fits a two-week schedule;
+decisions for you are in \cref{sec:decisions}.
+\end{abstract}
+
+\tableofcontents
+
+% ===========================================================================
+\section{Principles}
+
+\begin{itemize}
+  \item \textbf{Two models only.} Each appendix describes one model completely: what it is, how it is
+    fitted, its uncertainty, and how well it does. B refers to A for everything they share (the data,
+    the measures, the model-error term) and does not repeat it.
+  \item \textbf{One language.} The likelihood-ratio statistic $-2\ln\lambda$ for accuracy; pulls for
+    calibration; ``model-error term'' for the systematic uncertainty, introduced in A as a systematic
+    uncertainty in the physicists' sense. ``Discrepancy'' and ``deviance'' disappear.
+  \item \textbf{Every number from a script in the repository.} Each figure and table is regenerated
+    from the committed model files (\file{runs/SMOOTH_J40}, \file{runs/FTD_SiLU_huber_d2_pearson_curv1e-06}),
+    with no number copied from an old workspace.
+  \item \textbf{For the reader of the paper}: a particle physicist who knows HEFT and Poisson statistics
+    but not splines or quadrature. Concise, with the pedagogy of the notes condensed into one sentence
+    each where needed.
+\end{itemize}
+
+% ===========================================================================
+\section{Appendix A: the smooth model}
+\label{sec:A}
+
+Target length: 5--6 journal pages. Sources: \file{dihiggs_model.pdf} (sections 3--8), the current
+appendix, \file{smooth_results.pdf}.
+
+\begin{enumerate}[label=\textbf{A.\arabic*}]
+  \item \textbf{The form and the data.} The 23-term form $d\sigma/dm = \sum_i C_i(\theta)a_i(m)$ and when it
+    is exact (no $\theta$ dependence anywhere else in the calculation). The POWHEG spectra as exact Poisson
+    counts ($t_{sk} = q_s n_{sk}$); the fit rows, the quick-test rows and the 1,000 test spectra.
+  \item \textbf{The model.} Cubic B-splines times the threshold factor, knots uniform in $\sqrt{m-250}$;
+    the prediction is the bin integral, linear in the 920 coefficients. The free fit as the limit with
+    one box per bin, which sets the floor. \emph{Figure: \file{fig_basis}.}
+  \item \textbf{Fit and posterior.} Poisson maximum likelihood by iterated weights from the model (why not
+    the observed counts, in one sentence); the second-difference prior with strengths from the evidence;
+    the exact Gaussian posterior; its cost.
+  \item \textbf{The systematic uncertainty.} The three uncertainties (Poisson noise, fit, model error); the
+    floor reached by both the smooth model and the free fit; its growth with cancellation and its smoothness
+    in $m$; why the errors must vary from run to run; the form $\varepsilon(m)\sum_i|C_iA_{ik}|$ as the
+    largest spread relative errors $\varepsilon$ can produce; $\varepsilon$ from the quick-test rows (3
+    parameters); what it does not include (scales, PDFs, top-mass scheme). \emph{Figure:
+    \file{fig_model_error} (from \file{dihiggs_model.pdf}): $\varepsilon(m)$, pull width against $m$,
+    $\langle z^2\rangle$ by cancellation fifth for four treatments.}
+  \item \textbf{Validation on the test spectra.} Accuracy (table: smooth model and free fit;
+    figure against $m$), calibration (table), three example spectra (\file{fig_spectra_dz}, replacing the
+    nine-panel figure), inside a bin (merged-bin test), the edges (240--255 and 1455--1500~GeV).
+  \item \textbf{The coefficient functions.} The 23 $a_i(m)$ with their exact bands, \emph{without} the old
+    network's points (new figure).
+  \item \textbf{Using the model.} What is published (the model file, the code), the valid range
+    250--1455~GeV, the uncertainty for one bin and for sums of bins, and the SM example
+    ($28.11$~fb in 255--1455~GeV; fit uncertainty 0.006~fb; model-error term 0.03--0.17~fb).
+\end{enumerate}
+
+% ===========================================================================
+\section{Appendix B: the neural-network density model}
+\label{sec:B}
+
+Target length: 3--4 journal pages. Sources: \file{density_plan.pdf} (with addendum),
+\file{density_results.pdf}.
+
+\begin{enumerate}[label=\textbf{B.\arabic*}]
+  \item \textbf{Why a second model.} An independent representation of the same 23 functions, built in an
+    entirely different way, tests whether the results of A depend on the choice of splines and prior.
+  \item \textbf{The network.} $a_i(m) = \phi(m)\,P_i(z)\,e^{Q_i(z)}$: $P$ a six-layer network with SiLU
+    activations and a $\tanh$ output, $Q$ linear, input $z = 2\sqrt{(m-250)/1205}-1$; 3,944 parameters.
+  \item \textbf{Bin integrals by Gauss--Legendre quadrature.} Eight nodes per bin; why the quadrature must be
+    far more accurate than the noise (its error becomes a bias in the density); the cost (640 evaluations per
+    step, independent of the batch). One paragraph on why a network trained on bin contents at bin centres
+    is not a density (biased by about 1\% near threshold on a realistic toy), without describing the old
+    networks.
+  \item \textbf{Training.} L1 loss, then the Huber loss of the pulls with Poisson variances from the model;
+    the smoothness penalty (curvature of $P_ie^{Q_i}$ in $z$, $\lambda = 10^{-6}$) and why it is needed (the
+    poorly determined $a_{16}$--$a_{19}$).
+  \item \textbf{Results.} Accuracy (table: A, free fit, B); calibration with its own $\varepsilon$, which
+    equals A's: the systematic is a property of POWHEG, not of either model; agreement of the densities
+    (0.31\% median, equal at and between bin centres); the coefficient functions against A's bands.
+    \emph{Figures: accuracy against $m$ for A and B; $\varepsilon(m)$ of both;
+    $d\sigma/dm$ of A and B for three spectra with the ratio B/A below (new, without the old networks); the
+    23 $a_i$ of B over A's bands.}
+  \item \textbf{Limitations.} A single network (no fit uncertainty of its own, unless the seeds ensemble is
+    done); slightly less accurate than A just above threshold.
+\end{enumerate}
+
+% ===========================================================================
+\section{Files}
+
+\begin{itemize}
+  \item \file{docs/paper/appendix_A_smooth.tex}, \file{docs/paper/appendix_B_density.tex}: the two appendices,
+    each to be \code{\textbackslash input} after \code{\textbackslash appendix} in the paper (JHEP style),
+    with \file{appendix_refs.bib}.
+  \item \file{docs/paper/appendices_draft.tex}: a stand-alone wrapper that compiles both, for reading.
+  \item Figure scripts in \file{docs/paper/}, one per figure, all reading the repository's model files through
+    \file{smooth_common.py}. New: \file{fig_A_coefficients.py}, \file{fig_A_merged.py} (ported from
+    \file{docs/smooth/scripts/merged.py}), \file{fig_B_accuracy.py}, \file{fig_B_density.py},
+    \file{fig_B_coefficients.py}, \file{fig_B_epsilon.py}. Reused: \file{fig_basis.py},
+    \file{fig_spectra_dz.py}, \file{docs/model/model_error_study.py}.
+  \item The current appendix (v4) moves to \file{docs/paper/v4_smooth/}, like v2 and v3; the executive summary
+    is updated at the end.
+\end{itemize}
+
+% ===========================================================================
+\section{Schedule (two weeks)}
+
+\begin{center}
+\small
+\begin{tabular}{ll}
+\toprule
+days 1--3 & Appendix A: text, new figures, the merged-bin script ported; you review \\
+days 4--5 & Appendix B: text and figures; you review \\
+in parallel (5090) & optional: seeds ensemble and merged-bin test for B (\cref{sec:decisions}) \\
+days 6--8 & revisions from you and the colleagues; references; consistency with the main text \\
+days 9--10 & executive summary; final numbers; tagged commit \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+% ===========================================================================
+\section{Decisions for you}
+\label{sec:decisions}
+
+\begin{keyidea}[Decisions before I proceed]
+\begin{enumerate}
+  \item \textbf{Structure}: A and B as in \cref{sec:A,sec:B}. Agreed?
+  \item \textbf{The old networks}: left out entirely, except one sentence in B.3 that a network trained on bin
+    contents at bin centres does not give the density (with the toy result). Agreed, or leave even that out?
+  \item \textbf{Seeds ensemble for B} (10 seeds of L1 + fine-tune on the 5090, a few hours): gives B a fit
+    uncertainty and a measured spread between bin centres. Worth it for the paper, or state the limitation?
+  \item \textbf{Merged-bin test for B} (one L1 + fine-tune on 30~GeV bins): makes B's claim to be a density as
+    strong as A's. Worth it?
+  \item \textbf{The main text}: who writes it, and which section labels should the appendices refer to (now
+    \code{sec:model}, a placeholder)? Should the appendices assume the main text has already introduced the
+    23-term form and the POWHEG samples, or repeat them briefly?
+  \item \textbf{Document class}: JHEP (\code{jheppub}) for the wrapper too, or a plain article for drafts?
+\end{enumerate}
+\end{keyidea}
+
+\end{document}
