@@ -205,6 +205,33 @@ class HEFTDensity(HEFTNet):
         # rows are ordered bin by bin, n_nodes per bin: sum over the nodes of each bin
         return a.view(self.n_bins, self.n_nodes, self.n_coeffs).sum(dim=1)
 
+    # ---- the smoothness (curvature) penalty ---------------------------------
+    def curvature_penalty(self, n_points=1201):
+        '''
+        The mean over the functions of the relative curvature of the network's
+        own part of each coefficient function, g_i = P_i e^{Q_i} (that is,
+        a_i without the threshold factor, which is physics):
+
+            R = (1/n) sum_i  sum_j (d^2 g_i/dz^2 at z_j)^2 / sum_j g_i(z_j)^2,
+
+        on n_points equally spaced values z_j of the network's input variable
+        from 255 GeV to 1455 GeV, the second derivative by second differences.
+        With the default input z ~ sqrt(m - 250 GeV), this is the variable in
+        which the spline model's smoothness prior acts (its knots are uniform
+        in sqrt(m - 250)). The denominator is held fixed (detach), so the
+        penalty discourages curvature without shrinking the functions.
+        Multiply by a strength lambda and add it to the loss (finetune.py,
+        argument curvature). See docs/density/density_plan.pdf, section 6.
+        '''
+        p = next(self.parameters())
+        lo = float(self.network_input(torch.tensor([M_LO], dtype=torch.float64)))
+        hi = float(self.network_input(torch.tensor([EDGES[-1]], dtype=torch.float64)))
+        z = torch.linspace(lo, hi, n_points, dtype=p.dtype, device=p.device)
+        h = (hi - lo) / (n_points - 1)
+        g = self.coeffs(z)                                    # [n_points, n_coeffs]
+        d2 = (g[2:] - 2 * g[1:-1] + g[:-2]) / h**2            # second differences / h^2
+        return ((d2**2).sum(0) / (g.detach()**2).sum(0)).mean()
+
     # ---- the prediction for training rows -----------------------------------
     def forward(self, x):
         # x.shape: [N, 6]; x[:, 0] = (m - 255 GeV)/1500 GeV at a bin centre,

@@ -12,6 +12,7 @@
 #   data/heft_wide_gauss_testdata_13TeV.csv      the 1,000 test spectra
 #   data/heft_wide_gauss_traindata_13TeV.csv.gz  the training rows (training_rows(), quick_test_rows())
 #   code/runs/ENS_bootstrap_huber_d2_1/member_*  the 20 networks (network_bins(), network_density())
+#   code/runs/<run>                              a density network (load_density_network(run))
 #
 # The predictions take about a minute to compute, so they are cached in
 # docs/paper/smooth_test.npz.  The cache is rebuilt automatically when it is
@@ -141,6 +142,26 @@ def training_rows():
 def quick_test_rows():
     '''The quick-test rows (same four arrays as training_rows()), used to determine epsilon(m).'''
     return _arrays(_split_rows()['quick'])
+
+
+def load_density_network(run):
+    '''
+    A trained density network (dihiggs.heftnet.HEFTDensity), rebuilt from the
+    run folder's dihiggs_config.yaml (activation, threshold factor, nodes per
+    bin, input variable) and loaded with its parameters, in evaluation mode,
+    on the CPU, in double precision. run: a folder name in code/runs (e.g.
+    'FTD_SiLU_huber_d2_pearson') or a path to a run folder.
+    '''
+    import yaml
+    from dihiggs.heftnet import HEFTDensity
+    folder = run if os.path.isdir(run) else os.path.join(REPO, 'code', 'runs', run)
+    cfg = yaml.safe_load(open(os.path.join(folder, 'dihiggs_config.yaml')))
+    assert cfg.get('model') == 'density', f'{run} is not a density-model run'
+    d = cfg.get('density', {})
+    net = HEFTDensity(activation=cfg['activation'], threshold=d.get('threshold', True),
+                      n_nodes=d.get('n_nodes', 8), input_map=d.get('input_map', 'sqrt'))
+    net.load(os.path.join(folder, 'dihiggs_params.pth'))     # drwho's Model.load: CPU, eval mode
+    return net.double()
 
 
 def _networks():

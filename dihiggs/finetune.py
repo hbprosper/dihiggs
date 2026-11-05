@@ -180,7 +180,7 @@ def _average_loss(model, loss_fn, X, T, V, U, variance_from, chunk_size,
 def finetune(model, X, T, V, U, Xv, Tv, Vv, Uv, loss_fn,
              steps=5000, lr=1e-4, n_lr_steps=4, gamma=0.5,
              variance_from='data', chunk_size=65536, val_every=50,
-             paramsfile=None, lossfile=None, print_every=500):
+             paramsfile=None, lossfile=None, print_every=500, curvature=0.0):
     '''
     Stage 2 of the training: fine-tune a trained model with full-batch Adam.
 
@@ -205,11 +205,24 @@ def finetune(model, X, T, V, U, Xv, Tv, Vv, Uv, loss_fn,
     paramsfile     : where to save the parameters with the lowest validation
                      loss (model.save); they are reloaded at the end.
     lossfile       : csv file for the loss history.
+    curvature      : strength lambda of the smoothness penalty
+                     lambda * model.curvature_penalty() (HEFTDensity only),
+                     added to the training AND the validation loss, so that
+                     the parameters kept are the best for the penalised loss.
 
     Returns a dictionary of numpy arrays: step, train, val, best, lr.
     '''
     assert variance_from in ('data', 'model'), variance_from
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+
+    def penalty(with_grad):
+        # the smoothness penalty, once per step (it does not depend on the rows)
+        if not curvature:
+            return 0.0
+        pen = curvature * model.curvature_penalty()
+        if with_grad:
+            pen.backward()
+        return float(pen.detach())
     # StepLR multiplies the learning rate by gamma every step_size steps
     step_size = max(1, steps // n_lr_steps)
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=step_size,
@@ -222,7 +235,7 @@ def finetune(model, X, T, V, U, Xv, Tv, Vv, Uv, loss_fn,
         model.eval()
         with torch.no_grad():
             return _average_loss(model, loss_fn, Xv, Tv, Vv, Uv,
-                                 variance_from, chunk_size, with_grad=False)
+                                 variance_from, chunk_size, with_grad=False) + penalty(False)
 
     best = validation_loss()        # the starting model is the first "best"
     if paramsfile is not None:
@@ -232,7 +245,7 @@ def finetune(model, X, T, V, U, Xv, Tv, Vv, Uv, loss_fn,
         model.train()
         optimizer.zero_grad()       # forget the previous gradients
         train = _average_loss(model, loss_fn, X, T, V, U, variance_from,
-                              chunk_size, with_grad=True)
+                              chunk_size, with_grad=True) + penalty(True)
         if not math.isfinite(train):
             print(f'\nstep {step}: the training loss is not finite; '
                   'stopping and keeping the best parameters so far')
@@ -274,7 +287,7 @@ def finetune(model, X, T, V, U, Xv, Tv, Vv, Uv, loss_fn,
 def finetune_lbfgs(model, X, T, V, U, Xv, Tv, Vv, Uv, loss_fn,
                    blocks=30, iters_per_block=50, history_size=50,
                    variance_from='model', tol=1e-7,
-                   paramsfile=None, lossfile=None, verbose=True):
+                   paramsfile=None, lossfile=None, verbose=True, curvature=0.0):
     '''
     Stage 2 of the training with L-BFGS, a quasi-Newton method: from the
     gradients of the last history_size steps it builds an approximation to
@@ -297,8 +310,8 @@ def finetune_lbfgs(model, X, T, V, U, Xv, Tv, Vv, Uv, loss_fn,
     each block the validation loss is computed and the best parameters kept.
     Stops when the training loss changes by less than tol (relative).
 
-    Arguments as for finetune; blocks, iters_per_block and history_size
-    control L-BFGS. Returns a dictionary of numpy arrays: step (block),
+    Arguments as for finetune (including curvature); blocks, iters_per_block
+    and history_size control L-BFGS. Returns a dictionary of numpy arrays: step (block),
     train, val, best.
     '''
     assert variance_from in ('data', 'model'), variance_from
@@ -310,9 +323,13 @@ def finetune_lbfgs(model, X, T, V, U, Xv, Tv, Vv, Uv, loss_fn,
                                   line_search_fn='strong_wolfe')
 
     def loss_on(Xa, Ta, Va, Ua, var=None):
+        # the data loss plus, if curvature > 0, the smoothness penalty
         f = model(Xa).view(-1)
         v = _variance(f, Va, Ua, variance_from) if var is None else var
-        return loss_fn(f, Ta, v)
+        loss = loss_fn(f, Ta, v)
+        if curvature:
+            loss = loss + curvature * model.curvature_penalty()
+        return loss
 
     def validation_loss():
         model.eval()

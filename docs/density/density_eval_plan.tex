@@ -1,0 +1,205 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{mathpazo}
+\usepackage{amsmath,amssymb}
+\usepackage{microtype}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage[dvipsnames]{xcolor}
+\usepackage{tikz}
+\usetikzlibrary{positioning,arrows.meta,calc,fit,backgrounds,decorations.pathreplacing}
+\usepackage[most]{tcolorbox}
+\usepackage{enumitem}
+\usepackage{listings}
+\usepackage[font=small,labelfont=bf]{caption}
+\usepackage{hyperref}
+\hypersetup{colorlinks=true,linkcolor=MidnightBlue,citecolor=MidnightBlue,urlcolor=MidnightBlue}
+\usepackage{cleveref}
+\urlstyle{tt}
+\def\UrlBreaks{\do\_\do/\do.}
+\newcommand{\file}[1]{\nolinkurl{#1}}
+\newcommand{\code}[1]{\texttt{#1}}
+\newcommand{\mhh}{m_{hh}}
+\newcommand{\bC}{\boldsymbol{C}}
+\newcommand{\snoise}{s_{\text{noise}}}
+
+\definecolor{trainable}{HTML}{1B6CA8}
+\definecolor{physics}{HTML}{2E933C}
+\definecolor{datac}{HTML}{7B4EA3}
+\definecolor{warn}{HTML}{C0392B}
+
+\newtcolorbox{keyidea}[1][]{enhanced,breakable,colback=physics!6,colframe=physics!70!black,
+  fonttitle=\bfseries,title={#1},boxrule=0.6pt,arc=2pt,left=6pt,right=6pt}
+\newtcolorbox{aside}[1][]{enhanced,breakable,colback=trainable!5,colframe=trainable!70!black,
+  fonttitle=\bfseries,title={#1},boxrule=0.6pt,arc=2pt,left=6pt,right=6pt}
+\newtcolorbox{assume}[1][]{enhanced,breakable,colback=datac!5,colframe=datac!70!black,
+  fonttitle=\bfseries,title={#1},boxrule=0.6pt,arc=2pt,left=6pt,right=6pt}
+\newtcolorbox{watch}[1][]{enhanced,breakable,colback=warn!5,colframe=warn!70!black,
+  fonttitle=\bfseries,title={#1},boxrule=0.6pt,arc=2pt,left=6pt,right=6pt}
+\setlist{itemsep=2pt,topsep=3pt}
+\setlength{\emergencystretch}{3em}
+
+\lstset{language=Python, basicstyle=\ttfamily\small, columns=fullflexible,
+  keepspaces=true, commentstyle=\color{physics!70!black}\itshape,
+  keywordstyle=\color{trainable!90!black}\bfseries, stringstyle=\color{datac},
+  showstringspaces=false, frame=single, rulecolor=\color{gray!40},
+  backgroundcolor=\color{gray!3}, xleftmargin=4pt, xrightmargin=4pt,
+  aboveskip=6pt, belowskip=6pt}
+
+\title{\textbf{Evaluating the density network}\\[4pt]
+\large Plan: the same tests, the same measures, the same table as the smooth model}
+\author{P.~Bhat (Fermilab), N.~De~Filippis (Politecnico di Bari),\\
+K.F.~Johnson, H.B.~Prosper, R.~Starnes (Florida State University)}
+\date{5 November 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+\noindent
+The fine-tuned density networks (\file{runs/FTD_SiLU_*_pearson}, started from
+\file{runs/DENS_L1_SiLU_thr}) look good in the fine-tune notebook's own measure. That measure
+is Neyman's $\chi^2$ with an estimated number of events, which is not what the paper uses. We
+propose to evaluate them exactly as the smooth model was evaluated: the likelihood-ratio
+statistic with the exact Poisson counts, calibrated pulls with a model-error term determined on
+data not used in the fit, and a direct comparison of the densities. The work goes into one new
+notebook, \file{code/heft_density_eval.ipynb}, and a short results note. Decisions for you are in
+\cref{sec:decisions}.
+\end{abstract}
+
+\tableofcontents
+
+% ===========================================================================
+\section{Why a new evaluation}
+
+\begin{aside}[Two measures of agreement with a count]
+Let $n$ be the POWHEG count in a bin and $\mu$ the model's prediction, in events.
+\begin{itemize}
+  \item \textbf{Neyman's $\chi^2$}, $(n-\mu)^2/n$, uses the \emph{observed} count as the variance.
+    The fine-tune notebook uses this, with $n$ estimated through $N_\text{eff}$. It favours
+    predictions that are biased low, because a downward fluctuation gets a smaller variance and
+    so a larger weight.
+  \item \textbf{The likelihood-ratio statistic}, $-2\ln\lambda = 2[\mu - n + n\ln(n/\mu)]$, the
+    logarithm of $\mathrm{Poisson}(n;\mu)/\mathrm{Poisson}(n;n)$, is the exact measure for counts.
+    For a correct model it follows $\chi^2_1$ (mean 1). The paper uses this, with the exact counts
+    recovered by \file{dihiggs/counts.py}.
+\end{itemize}
+A model fitted with its own Poisson variances (\code{VARIANCE\_FROM='model'}), as the density
+networks were, is penalised by Neyman's measure for \emph{not} being biased low. The comparison
+with the smooth model must therefore be redone with $-2\ln\lambda$.
+\end{aside}
+
+The reference numbers on the 1,000 test spectra (mean $-2\ln\lambda$ per bin):
+
+\begin{center}
+\small
+\begin{tabular}{lccc}
+\toprule
+model & 255--555 GeV & $>555$ GeV & median per spectrum\\
+\midrule
+smooth model & 1.566 & 1.100 & 1.078\\
+free fit per bin (the floor for any 23-term model) & 1.559 & 1.105 & 1.075\\
+old network ensemble (20 networks) & 1.561 & 1.121 & 1.085\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+% ===========================================================================
+\section{The tests}
+\label{sec:tests}
+
+All on the 1,000 test spectra, which played no part in training, for the L1 starting network and
+the four fine-tunes ($\delta = 1, 2, 3$ and plain $\chi^2$).
+
+\subsection{Accuracy: $-2\ln\lambda$}
+
+Mean per bin below and above 555~GeV, and the median per spectrum, as in the table above; and per
+bin as a function of $\mhh$ (the figure \file{fig_app_accuracy} with the density network added).
+The density network's prediction for a bin is its bin integral, \code{HEFTDensity.spectrum(theta)}.
+
+\subsection{Calibration: a model-error term for the network}
+
+The pulls need the total uncertainty of a prediction. For the smooth model this is the Poisson
+noise, the exact fit uncertainty, and the model-error term $\delta = \varepsilon(m)\sum_i|C_iA_i|$
+(\file{docs/dihiggs_model.pdf}, section 6).
+
+\begin{itemize}
+  \item \textbf{Fit uncertainty.} A single network has none. The ensembles showed that the network
+    spread is a few per cent of the noise (5.6\%), so we set it to zero for now and note this. A
+    seeds ensemble (\cref{sec:later}) will supply it.
+  \item \textbf{Model-error term.} We determine the network's own $\varepsilon(m)$ exactly as for
+    the smooth model: on the 38,076 quick-test rows, never used in training, solve
+    $\langle (t-f)^2/(\snoise^2 + \varepsilon_k^2 S^2)\rangle = 1$ in each bin, with
+    $S = \sum_i |C_i A_{ik}|$ from the network's own $A_{ik}$, then smooth $\ln\varepsilon$ by a
+    quadratic. As a check we also use the smooth model's $\varepsilon$ unchanged.
+\end{itemize}
+Measures: standard deviation of the pull overall and below and above 555~GeV; the fraction with
+$|z|<2$; $\langle z^2\rangle$ by fifth of the cancellation ratio. The network's $\varepsilon(m)$ is
+itself a result: if the network sits at the same floor as the smooth model, its $\varepsilon$ should
+be similar.
+
+\subsection{The density itself}
+
+\begin{itemize}
+  \item \textbf{Against the smooth model}, on a 0.5~GeV grid from 255 to 1455~GeV, for all 1,000 test
+    points: the relative difference of $d\sigma/dm$, at the bin centres and between them, and the
+    fraction of points within the smooth model's total $\pm1\sigma$ and $\pm2\sigma$ bands.
+  \item \textbf{Between bin centres}: the figure \file{fig_interpolation} redrawn with the density
+    network beside the old ensemble and the smooth model, for the same three spectra.
+  \item \textbf{The 23 coefficient functions} $a_i(m)$ of the network, overlaid on the smooth model's
+    bands (\file{fig_coefficients}). The poorly determined $a_{16}$--$a_{20}$ may differ; the
+    well-determined ones should agree.
+\end{itemize}
+
+\subsection{Below the fitted range}
+
+With the threshold factor, the density network is defined down to 250~GeV. Its integral over
+250--255~GeV is a prediction for the unused POWHEG bin 240--255~GeV (the source file holds it). The
+smooth model predicted that bin 8\% high in total over the test spectra; we compare.
+
+% ===========================================================================
+\section{Implementation}
+
+\begin{itemize}
+  \item \textbf{New notebook \file{code/heft_density_eval.ipynb}}, in the style of the others (header,
+    banner comments, switches). It reuses \file{docs/paper/smooth_common.py} for the test spectra with
+    their exact counts, the quick-test rows, the smooth model's predictions and the old ensemble.
+    A new helper there, \code{load\_density\_network(run)}, rebuilds a \code{HEFTDensity} from a
+    run's \file{dihiggs_config.yaml} (activation, threshold, nodes, input) and loads its parameters.
+  \item \textbf{Switches}: \code{RUNS} (the run folders to evaluate), \code{FEATURED} (the run shown in
+    the figures, default \file{FTD_SiLU_huber_d2_pearson}).
+  \item \textbf{Outputs}: printed tables; figures in \file{docs/density/} (accuracy versus $\mhh$,
+    calibration by cancellation fifth, density comparison, coefficients, interpolation).
+  \item \textbf{Results note} \file{docs/density/density_results.pdf}, in the house style.
+  \item Runs on a laptop CPU in a few minutes; no GPU needed.
+\end{itemize}
+
+% ===========================================================================
+\section{Later, on the 5090}
+\label{sec:later}
+
+\begin{enumerate}
+  \item A seeds ensemble of the featured configuration (10 seeds): the network's fit uncertainty, and
+    its spread between bin centres on real data.
+  \item The merged-bin test: train on 30~GeV bins, predict the 15~GeV bins (the density model only
+    needs 30~GeV edges; the data preparation merges pairs of rows, whose counts add).
+\end{enumerate}
+
+% ===========================================================================
+\section{Decisions for you}
+\label{sec:decisions}
+
+\begin{keyidea}[Decisions before I proceed]
+\begin{enumerate}
+  \item \textbf{Evaluate all five runs}, featuring $\delta = 2$ in the figures. Agreed, or feature
+    another?
+  \item \textbf{Network fit uncertainty set to zero} until a seeds ensemble exists. Agreed?
+  \item \textbf{The network's own $\varepsilon(m)$} from the quick-test rows, with the smooth model's
+    $\varepsilon$ as a check. Agreed?
+  \item \textbf{The 240--255~GeV check} included. Agreed?
+  \item \textbf{A new notebook} \file{code/heft_density_eval.ipynb} and a helper in
+    \file{smooth_common.py}, rather than additions to \file{heft_test.ipynb}. Acceptable?
+\end{enumerate}
+\end{keyidea}
+
+\end{document}
